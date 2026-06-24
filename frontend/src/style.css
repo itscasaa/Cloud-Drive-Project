@@ -138,3 +138,46 @@ input {
 .drive-preview-video-shell video {
   object-fit: contain;
 }
+
+.landing-preview-scale-wrap {
+  width: 100%;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+}
+
+.landing-preview-scale-inner {
+  width: 1120px;
+  transform-origin: top center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 767px) {
+  .landing-preview-scale-inner {
+    transform: scale(calc((100vw - 32px) / 1120));
+  }
+
+  .landing-preview-scale-wrap {
+    height: calc(720px * ((100vw - 32px) / 1120));
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .landing-preview-scale-inner {
+    transform: scale(0.72);
+  }
+
+  .landing-preview-scale-wrap {
+    height: calc(720px * 0.72);
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-preview-scale-inner {
+    transform: scale(0.9);
+  }
+
+  .landing-preview-scale-wrap {
+    height: calc(720px * 0.9);
+  }
+}
