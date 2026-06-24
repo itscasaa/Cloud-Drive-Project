@@ -2,42 +2,38 @@ export type AuthUser = {
   id: string
   name: string
   email: string
+  role?: string
   status?: string
 }
 
-const ACCESS_TOKEN_KEY = '9drive.accessToken'
-const REFRESH_TOKEN_KEY = '9drive.refreshToken'
-const USER_KEY = '9drive.user'
+const USER_KEY = 'casanest.user'
 
 export function getAccessToken() {
-  return localStorage.getItem(ACCESS_TOKEN_KEY)
+  return null
 }
 
 export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY)
+  return null
 }
 
 export function getStoredUser(): AuthUser | null {
-  const raw = localStorage.getItem(USER_KEY)
+  const raw = sessionStorage.getItem(USER_KEY)
   return raw ? JSON.parse(raw) as AuthUser : null
 }
 
-export function setAuthSession(accessToken: string, refreshToken: string, user: AuthUser) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+export function setAuthSession(_accessToken: string, _refreshToken: string, user: AuthUser) {
+  sessionStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
 export function updateStoredUser(user: AuthUser) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  sessionStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
-export function setAccessToken(accessToken: string) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
+export function setAccessToken(_accessToken: string) {
+  // Access tokens are handled by HttpOnly cookies
 }
 
 export function clearAuthSession() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(REFRESH_TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(USER_KEY)
 }
+

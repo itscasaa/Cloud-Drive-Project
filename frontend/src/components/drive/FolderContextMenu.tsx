@@ -14,7 +14,10 @@ export function FolderContextMenu({ x, y, folder, onClose, onCut, onRename, onIn
           <p className="truncate px-3 py-2 text-xs font-bold text-slate-500">{folder.name}</p>
         <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onCut}><Scissors className="h-4 w-4" />Cut</Button>
         <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onRename}><Edit3 className="h-4 w-4" />Rename</Button>
-        <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onInvite}><UserPlus className="h-4 w-4" />Invite Member</Button>
+        {/* Hiding sharing features for MVP */}
+        {false && (
+          <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onInvite}><UserPlus className="h-4 w-4" />Invite Member</Button>
+        )}
         <Button variant="danger" className="h-12 w-full justify-start sm:h-11" onClick={onDelete}><Trash2 className="h-4 w-4" />Delete</Button>
       </div>
     </>

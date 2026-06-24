@@ -1,9 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+@theme {
+  --font-heading: "Plus Jakarta Sans", sans-serif;
+  --font-body: "Plus Jakarta Sans", sans-serif;
+
+  --color-accent-blue: #2563EB;
+  --color-soft-blue: #DBEAFE;
+  --color-dark-navy: #0F172A;
+  --color-text-primary: #111827;
+  --color-text-muted: #64748B;
+  --color-border-primary: #111827;
+  --color-outer-bg: #C9CCD1;
+  --color-main-canvas: #FFFFFF;
+  --color-dark-card: #111827;
+
+  --animate-fade-in-up: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.5s ease-out forwards;
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+
+.mesh-gradient-bg {
+  background-color: #F3F6FC;
+  background-image: 
+    radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.18), transparent 34%),
+    radial-gradient(circle at 80% 5%, rgba(96, 165, 250, 0.28), transparent 36%),
+    linear-gradient(180deg, #EEF4FF 0%, #F8FBFF 55%, #FFFFFF 100%);
+  background-attachment: fixed;
+}
+
+@keyframes pulse-success {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+.pulse-dot {
+  animation: pulse-success 2s infinite ease-in-out;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #E5E7EB;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #D1D5DB;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 :root {
-  font-family: Manrope, ui-sans-serif, system-ui, sans-serif;
-  color: #0f172a;
-  background: #f8fafc;
+  font-family: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  color: var(--color-text-primary);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

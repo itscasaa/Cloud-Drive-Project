@@ -15,6 +15,10 @@ export function GoogleAuthPage() {
   const status = params.get('status')
 
   useEffect(() => {
+    if (status === 'already_linked') {
+      setMessage('This Google Drive account is already linked to another CasaNest account.')
+      return
+    }
     if (status === 'error' || !token) {
       setMessage('Google sign-in failed. Please try again.')
       return

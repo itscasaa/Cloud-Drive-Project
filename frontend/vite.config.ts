@@ -8,11 +8,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'pwa-192x192.svg', 'pwa-512x512.svg', 'maskable-icon.svg'],
+      includeAssets: ['brand/logos.png'],
       manifest: {
-        name: '9Drive',
-        short_name: '9Drive',
-        description: 'Google Drive storage gateway for files, folders, sharing, and quota tracking.',
+        name: 'CasaNest',
+        short_name: 'CasaNest',
+        description: 'CasaNest - Secure storage nest for your connected drives.',
         theme_color: '#2563eb',
         background_color: '#ffffff',
         display: 'standalone',
@@ -20,9 +20,8 @@ export default defineConfig({
         scope: '/',
         orientation: 'portrait-primary',
         icons: [
-          { src: '/pwa-192x192.svg', sizes: '192x192', type: 'image/svg+xml' },
-          { src: '/pwa-512x512.svg', sizes: '512x512', type: 'image/svg+xml' },
-          { src: '/maskable-icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+          { src: '/brand/logos.png', sizes: '192x192', type: 'image/png' },
+          { src: '/brand/logos.png', sizes: '512x512', type: 'image/png' },
         ],
       },
       workbox: {

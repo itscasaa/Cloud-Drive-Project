@@ -1,5 +1,5 @@
 -- ==========================================
--- 9Drive MySQL Database Setup Script
+-- CasaNest MySQL Database Setup Script
 -- Compatible with MySQL 8.0+ and MariaDB (XAMPP / phpMyAdmin)
 -- ==========================================
 
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS `s3_storage_configs` (
     `access_key_id_encrypted` TEXT NOT NULL,
     `secret_access_key_encrypted` TEXT NOT NULL,
     `force_path_style` TINYINT(1) NOT NULL DEFAULT 0,
-    `prefix` VARCHAR(191) NOT NULL DEFAULT '9drive' COMMENT 'S3 prefix path directory',
+    `prefix` VARCHAR(191) NOT NULL DEFAULT 'casanest' COMMENT 'S3 prefix path directory',
     `quota_bytes` BIGINT NULL COMMENT 'Configurable virtual storage quota in bytes',
     `status` VARCHAR(32) NOT NULL DEFAULT 'active',
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

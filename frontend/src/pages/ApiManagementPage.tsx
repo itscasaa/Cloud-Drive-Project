@@ -1,9 +1,18 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { CheckCircle, Clipboard, KeyRound, ShieldCheck, Trash2, UploadCloud } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { KeyRound, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { DummyModal } from '@/components/drive/DummyModal'
+import { Button } from '@/components/ui/button'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/drive/PageHeader'
+
+/*
+// ==========================================
+// ORIGINAL API KEYS MANAGEMENT CODE
+// (Kept for future developer release phase)
+// ==========================================
+
+import { useEffect, useState, type FormEvent } from 'react'
+import { CheckCircle, Clipboard, ShieldCheck, Trash2, UploadCloud } from 'lucide-react'
+import { DummyModal } from '@/components/drive/DummyModal'
 import { API_URL, apiFetch, formatDate } from '@/lib/api'
 
 type ApiKey = { id: string; name: string; keyPrefix: string; scopes: string[]; status: string; lastUsedAt: string | null; expiresAt: string | null; revokedAt: string | null; createdAt: string }
@@ -25,7 +34,7 @@ await fetch('${API_URL}/api/v1/uploads', {
   body: form,
 })`
 
-export function ApiManagementPage() {
+export function ApiManagementPageOriginal() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [keyName, setKeyName] = useState('')
@@ -108,9 +117,53 @@ export function ApiManagementPage() {
       <DummyModal open={createOpen} title="Create API Key" description="API keys can upload files using the public API." onClose={() => setCreateOpen(false)}>
         <form className="grid gap-4" onSubmit={createKey}>
           <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Key name" value={keyName} onChange={(event) => setKeyName(event.target.value)} required />
-          <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setCreateOpen(false)} disabled={loading}>Cancel</Button><Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Key'}</Button></div>
+          <div className="grid gap-3 pt-2 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setCreateOpen(false)} disabled={loading}>Cancel</Button><Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create Key'}</Button></div>
         </form>
       </DummyModal>
+    </>
+  )
+}
+*/
+
+export function ApiManagementPage() {
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <PageHeader title="API Keys" description="Access token credentials and developer automation tools." />
+      
+      <div className="mt-12 flex flex-col items-center justify-center px-4">
+        <Card className="relative w-full max-w-xl overflow-hidden border border-slate-100 bg-white p-8 text-center shadow-xl shadow-slate-900/5 sm:p-12">
+          {/* Decorative gradients */}
+          <div className="absolute -left-16 -top-16 h-36 w-36 rounded-full bg-blue-50/50 blur-2xl pointer-events-none" />
+          <div className="absolute -right-16 -bottom-16 h-36 w-36 rounded-full bg-indigo-50/50 blur-2xl pointer-events-none" />
+
+          <div className="relative flex flex-col items-center">
+            {/* Pulsing Icon Badge */}
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-inner ring-8 ring-blue-50/30">
+              <KeyRound className="h-7 w-7 animate-pulse" />
+            </div>
+
+            <h2 className="mt-8 text-2xl font-extrabold tracking-tight text-slate-950">
+              API access is coming soon.
+            </h2>
+            
+            <p className="mt-3 max-w-md text-sm font-semibold leading-relaxed text-slate-500">
+              Developer tools, api keys, and automated upload endpoints are currently restricted to staging. They will become available in a future version of CasaNest.
+            </p>
+
+            <div className="mt-8 flex justify-center">
+              <Button 
+                onClick={() => navigate('/all-files')}
+                className="group flex items-center gap-2 px-5 py-2.5 text-xs font-bold"
+              >
+                Go to All Files
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
     </>
   )
 }

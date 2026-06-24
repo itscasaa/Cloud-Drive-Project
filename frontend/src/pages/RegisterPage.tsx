@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { HardDrive } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { GoogleLogo } from '@/components/auth/GoogleLogo'
 import { Input } from '@/components/ui/input'
+import { BrandLogo } from '@/components/drive/BrandLogo'
 import { apiFetch } from '@/lib/api'
 import { setAuthSession, type AuthUser } from '@/lib/auth'
 
 type AuthResponse = { accessToken: string; refreshToken: string; user: AuthUser }
-const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY?.trim()
 
 declare global {
   interface Window {
@@ -25,47 +24,46 @@ export function RegisterPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [captchaToken, setCaptchaToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const recaptchaRef = useRef<HTMLDivElement | null>(null)
-  const recaptchaWidgetId = useRef<number | null>(null)
+
+  // Bootstrap State
+  const [setupRequired, setSetupRequired] = useState(false)
+  const [bootstrapLoading, setBootstrapLoading] = useState(false)
+  const [bootstrapForm, setBootstrapForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+  })
 
   useEffect(() => {
-    if (!recaptchaSiteKey) return
-    const scriptId = 'google-recaptcha-script'
-    const renderCaptcha = () => {
-      if (!recaptchaRef.current || !window.grecaptcha || recaptchaWidgetId.current !== null) return
-      recaptchaWidgetId.current = window.grecaptcha.render(recaptchaRef.current, {
-        sitekey: recaptchaSiteKey,
-        callback: setCaptchaToken,
-        'expired-callback': () => setCaptchaToken(''),
+    apiFetch<{ setupRequired: boolean }>('/auth/bootstrap-state', { skipAuth: true })
+      .then((state) => {
+        setSetupRequired(state.setupRequired)
       })
-    }
-
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = 'https://www.google.com/recaptcha/api.js?render=explicit'
-      script.async = true
-      script.defer = true
-      script.onload = renderCaptcha
-      document.body.appendChild(script)
-    } else {
-      renderCaptcha()
-    }
+      .catch(() => setSetupRequired(false))
   }, [])
 
-  async function continueWithGoogle() {
-    setGoogleLoading(true)
+  async function submitBootstrap(event: FormEvent) {
+    event.preventDefault()
+    setBootstrapLoading(true)
     setError('')
     try {
-      const data = await apiFetch<{ url: string }>('/auth/google/url', { skipAuth: true })
-      window.location.href = data.url
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google register failed')
-      setGoogleLoading(false)
+      await apiFetch('/auth/bootstrap', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({
+          name: bootstrapForm.name,
+          email: bootstrapForm.email,
+          password: bootstrapForm.password,
+        })
+      })
+      alert('Initial setup completed successfully! You can now log in.')
+      navigate('/login')
+    } catch (err: any) {
+      setError(err.message || 'Setup failed')
+    } finally {
+      setBootstrapLoading(false)
     }
   }
 
@@ -73,45 +71,213 @@ export function RegisterPage() {
     event.preventDefault()
     setLoading(true)
     setError('')
-    if (recaptchaSiteKey && !captchaToken) {
-      setError('Please complete the captcha.')
-      setLoading(false)
-      return
-    }
     try {
-      const data = await apiFetch<AuthResponse>('/auth/register', { method: 'POST', skipAuth: true, body: JSON.stringify({ name, email, password, captchaToken }) })
+      const data = await apiFetch<AuthResponse>('/auth/register', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ name, email, password, captchaToken: '' })
+      })
       setAuthSession(data.accessToken, data.refreshToken, data.user)
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Register failed')
-      if (recaptchaWidgetId.current !== null) window.grecaptcha?.reset(recaptchaWidgetId.current)
-      setCaptchaToken('')
     } finally {
       setLoading(false)
     }
   }
 
+  async function tryDemoMode() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await apiFetch<AuthResponse>('/auth/demo-login', { method: 'POST', skipAuth: true })
+      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      navigate('/all-files')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo login failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (setupRequired) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5">
+        <Card className="w-full max-w-xl p-6 md:p-8 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-100">
+          <div className="flex items-center gap-3">
+            <BrandLogo className="h-10 w-10 shadow-md shadow-blue-500/10" logoClassName="h-16 w-16" />
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900">Initial Setup</h1>
+              <p className="text-sm text-slate-500 font-medium">Configure your CasaNest gateway instance.</p>
+            </div>
+          </div>
+          
+          <p className="mt-5 text-xs text-yellow-700 bg-yellow-50 p-3.5 rounded-xl border border-yellow-100 font-semibold leading-relaxed">
+            ℹ️ <strong>Initial Setup Mode:</strong> This setup only appears before the first admin account is created.
+          </p>
+
+          <form onSubmit={submitBootstrap} className="mt-6 grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">Admin Name<Input value={bootstrapForm.name} onChange={(e) => setBootstrapForm({ ...bootstrapForm, name: e.target.value })} required className="h-11 rounded-xl" /></label>
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">Admin Email<Input type="email" value={bootstrapForm.email} onChange={(e) => setBootstrapForm({ ...bootstrapForm, email: e.target.value })} required className="h-11 rounded-xl" /></label>
+            </div>
+            
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">Admin Password<Input type="password" minLength={8} value={bootstrapForm.password} onChange={(e) => setBootstrapForm({ ...bootstrapForm, password: e.target.value })} required className="h-11 rounded-xl" /></label>
+
+            {error ? <p className="rounded-xl bg-red-50 p-3.5 text-xs font-semibold text-red-600 border border-red-100">{error}</p> : null}
+            <Button disabled={bootstrapLoading} className="mt-2 h-11 rounded-xl font-bold">{bootstrapLoading ? 'Setting up instance...' : 'Complete Setup & Register'}</Button>
+          </form>
+        </Card>
+      </main>
+    )
+  }
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5">
-      <Card className="w-full max-w-md p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white"><HardDrive className="h-6 w-6" /></div>
-          <div><h1 className="text-2xl font-extrabold">Register</h1><p className="text-sm text-slate-500">Create your storage gateway account.</p></div>
+    <main className="flex min-h-screen w-full flex-col md:flex-row bg-slate-50">
+      {/* Left Form Panel */}
+      <div className="w-full md:w-[45%] flex items-center justify-center p-6 sm:p-8 md:p-16 bg-white border-r border-slate-100 order-2 md:order-1">
+        <div className="w-full max-w-md space-y-8">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Create your CasaNest account</h1>
+            <p className="text-sm text-slate-500 font-medium">Start managing your connected drives securely.</p>
+          </div>
+
+          <form onSubmit={submit} className="space-y-5">
+            <div className="space-y-4">
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                Name
+                <Input 
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)} 
+                  required 
+                  placeholder="Your Name"
+                  className="h-11 rounded-xl"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                Email
+                <Input 
+                  type="email" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  required 
+                  placeholder="name@example.com"
+                  className="h-11 rounded-xl"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                Password
+                <Input 
+                  type="password" 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  required 
+                  minLength={8}
+                  placeholder="••••••••"
+                  className="h-11 rounded-xl"
+                />
+              </label>
+            </div>
+
+
+
+            {error ? (
+              <p className="rounded-xl bg-red-50 p-3.5 text-xs font-semibold text-red-600 border border-red-100">{error}</p>
+            ) : null}
+
+            <div className="space-y-3 pt-2">
+              <Button disabled={loading} className="w-full h-11 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/10">
+                {loading ? 'Creating...' : 'Create Account'}
+              </Button>
+
+              <div className="relative my-4 flex items-center justify-center">
+                <span className="absolute w-full border-t border-slate-100" />
+                <span className="relative bg-white px-4 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">or</span>
+              </div>
+
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={tryDemoMode} 
+                disabled={loading}
+                className="w-full h-11 rounded-xl font-bold border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                Try Demo Mode
+              </Button>
+            </div>
+          </form>
+
+          <p className="text-center text-sm font-medium text-slate-500">
+            Already have an account?{' '}
+            <Link className="font-bold text-blue-600 hover:underline" to="/login">
+              Login
+            </Link>
+          </p>
+          
+          <div className="flex justify-center gap-3 text-[11px] font-bold text-slate-400 border-t border-slate-100 pt-6">
+            <Link to="/privacy" className="hover:text-slate-600 transition">Privacy Policy</Link>
+            <span>•</span>
+            <Link to="/terms" className="hover:text-slate-600 transition">Terms of Service</Link>
+            <span>•</span>
+            <Link to="/data-deletion" className="hover:text-slate-600 transition">Data Deletion</Link>
+          </div>
         </div>
-        <form onSubmit={submit} className="mt-6 grid gap-4">
-          <label className="grid gap-2 text-sm font-semibold">Name<Input value={name} onChange={(e) => setName(e.target.value)} required /></label>
-          <label className="grid gap-2 text-sm font-semibold">Email<Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label className="grid gap-2 text-sm font-semibold">Password<Input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-          {recaptchaSiteKey ? <div className="min-h-[78px] overflow-hidden rounded-xl bg-slate-50 p-2"><div ref={recaptchaRef} /></div> : null}
-          {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p> : null}
-          <Button disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>
-        </form>
-        <div className="mt-4 grid gap-3">
-          <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
-          <Button variant="outline" disabled={googleLoading} onClick={continueWithGoogle}><GoogleLogo />{googleLoading ? 'Redirecting...' : 'Continue with Google and connect Drive'}</Button>
+      </div>
+
+      {/* Right Brand Panel */}
+      <div className="w-full md:w-[55%] flex flex-col justify-between p-6 md:p-16 text-white relative overflow-hidden bg-gradient-to-br from-[#0B122A] via-[#1D4ED8] to-[#38BDF8] order-1 md:order-2">
+        {/* Decorative ambient glow */}
+        <div className="absolute -left-20 -top-20 w-80 h-80 rounded-full bg-blue-400/10 blur-[100px] pointer-events-none" />
+        <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-sky-400/10 blur-[100px] pointer-events-none" />
+        
+        {/* Logo Section */}
+        <div className="flex items-center gap-3 relative z-10">
+          <BrandLogo className="h-10 w-10 md:h-12 md:w-12 shadow-xl shadow-blue-950/40" logoClassName="h-16 w-16 md:h-20 md:w-20" />
+          <span className="text-xl md:text-2xl font-extrabold tracking-tight">CasaNest</span>
         </div>
-        <p className="mt-5 text-center text-sm text-slate-500">Already registered? <Link className="font-bold text-blue-600" to="/login">Login</Link></p>
-      </Card>
+
+        {/* Content Section */}
+        <div className="my-auto py-6 md:py-0 relative z-10 space-y-4 md:space-y-8">
+          <div className="space-y-2 md:space-y-4">
+            <h2 className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
+              Build your secure<br className="hidden md:inline" /> storage nest.
+            </h2>
+            <p className="text-sm md:text-lg text-slate-200 max-w-xl font-medium leading-relaxed hidden md:block">
+              Connect your drives, organize your files, and keep everything protected in one simple dashboard.
+            </p>
+          </div>
+
+          {/* Security Features Trust Bullets */}
+          <div className="space-y-4 pt-4 border-t border-white/10 max-w-md hidden md:block">
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-sky-200">
+                <Check className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-slate-200 font-medium">drive.file only</span>
+            </div>
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-sky-200">
+                <Check className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-slate-200 font-medium">encrypted tokens</span>
+            </div>
+            <div className="flex items-center gap-3.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-sky-200">
+                <Check className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold text-slate-200 font-medium">files stay in your drive</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tagline Section */}
+        <div className="relative z-10 border-t border-white/10 pt-4 md:pt-6 hidden md:block">
+          <p className="text-sm font-bold text-slate-300">Secure storage nest for your connected drives.</p>
+          <p className="mt-1 text-xs text-slate-400 font-medium">Satu tempat aman untuk mengelola cloud storage kamu.</p>
+        </div>
+      </div>
     </main>
   )
 }

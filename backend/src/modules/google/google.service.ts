@@ -4,15 +4,59 @@ import { prisma } from '../../config/prisma.js'
 import { decryptText, encryptText } from '../../utils/crypto.js'
 
 const googleDriveFolderMimeType = 'application/vnd.google-apps.folder'
-const appFolderName = '9drive'
+const appFolderName = 'casanest'
 
 export function createOAuthClient(config: ProviderConfig) {
-  return new google.auth.OAuth2(decryptText(config.clientIdEncrypted), decryptText(config.clientSecretEncrypted), config.redirectUri)
+  const clientId = decryptText(config.clientIdEncrypted).trim()
+  const clientSecret = decryptText(config.clientSecretEncrypted).trim()
+  const redirectUri = config.redirectUri.trim()
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri)
+}
+
+export function validateGoogleConfig(config: ProviderConfig | null): { clientId: string; clientSecret: string; redirectUri: string } {
+  if (!config) {
+    const error = new Error('Google OAuth is not configured correctly. Please check the server configuration.')
+    ;(error as any).statusCode = 400
+    ;(error as any).code = 'GOOGLE_OAUTH_NOT_CONFIGURED'
+    throw error
+  }
+  try {
+    const clientId = decryptText(config.clientIdEncrypted).trim()
+    const clientSecret = decryptText(config.clientSecretEncrypted).trim()
+    const redirectUri = config.redirectUri.trim()
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      throw new Error('Empty values')
+    }
+    if (!clientId.endsWith('.apps.googleusercontent.com')) {
+      throw new Error('Invalid clientId suffix')
+    }
+    if (clientId.includes('\n') || clientId.includes('\r') || clientSecret.includes('\n') || clientSecret.includes('\r')) {
+      throw new Error('Newline in credentials')
+    }
+
+    return { clientId, clientSecret, redirectUri }
+  } catch (error) {
+    const err = new Error('Google OAuth is not configured correctly. Please check the server configuration.')
+    ;(err as any).statusCode = 400
+    ;(err as any).code = 'GOOGLE_OAUTH_NOT_CONFIGURED'
+    throw err
+  }
 }
 
 export async function getAuthedGoogleClient(account: ConnectedAccount) {
   if (!account.accessTokenEncrypted || !account.refreshTokenEncrypted || !account.tokenExpiresAt) throw new Error('Google account tokens are missing.')
   if (!account.providerConfigId) throw new Error('Google provider config is missing.')
+
+  // Check if reconnect is required because of old drive scope
+  const scopesArray = Array.isArray(account.scopes) ? account.scopes : []
+  if (!scopesArray.includes('https://www.googleapis.com/auth/drive.file')) {
+    const error = new Error('Google Drive account must be reconnected to request the updated security scopes.')
+    ;(error as any).statusCode = 403
+    ;(error as any).code = 'GOOGLE_OAUTH_RECONNECT_REQUIRED'
+    throw error
+  }
+
   const config = await prisma.providerConfig.findUniqueOrThrow({ where: { id: account.providerConfigId } })
   const client = createOAuthClient(config)
   client.setCredentials({

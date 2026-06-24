@@ -30,7 +30,14 @@ async function getOrCreateRoutingPolicy(userId: string) {
 
 storageRouter.get('/summary', async (req: AuthRequest, res, next) => {
   try {
-    const accounts = await prisma.connectedAccount.findMany({ where: { userId: req.user!.id, status: 'connected' }, include: { storageAccount: true } })
+    const isDemo = req.user!.role === 'demo'
+    let targetUserId = req.user!.id
+    if (isDemo) {
+      const admin = await prisma.user.findFirst({ where: { role: 'admin' } })
+      if (admin) targetUserId = admin.id
+    }
+
+    const accounts = await prisma.connectedAccount.findMany({ where: { userId: targetUserId, status: 'connected' }, include: { storageAccount: true } })
     const summary = accounts.reduce((acc, account) => {
       const storage = account.storageAccount
       acc.totalBytes += storage?.totalBytes ?? 0n
@@ -61,7 +68,12 @@ storageRouter.get('/summary', async (req: AuthRequest, res, next) => {
 
 storageRouter.get('/routing-policy', async (req: AuthRequest, res, next) => {
   try {
-    const policy = await getOrCreateRoutingPolicy(req.user!.id)
+    let targetUserId = req.user!.id
+    if (req.user!.role === 'demo') {
+      const admin = await prisma.user.findFirst({ where: { role: 'admin' } })
+      if (admin) targetUserId = admin.id
+    }
+    const policy = await getOrCreateRoutingPolicy(targetUserId)
     return res.json({ policy: { id: policy.id, mode: policy.mode, priorityAccountIds: normalizePriorityAccountIds(policy.priorityAccountIds), roundRobinCursor: policy.roundRobinCursor } })
   } catch (error) {
     return next(error)
@@ -70,6 +82,9 @@ storageRouter.get('/routing-policy', async (req: AuthRequest, res, next) => {
 
 storageRouter.patch('/routing-policy', async (req: AuthRequest, res, next) => {
   try {
+    if (req.user!.role === 'demo') {
+      return res.status(403).json({ code: 'DEMO_FORBIDDEN', message: 'Modifying routing policy is not allowed in Demo Mode.' })
+    }
     const body = routingPolicySchema.parse(req.body)
     const accountIds = [...new Set(body.priorityAccountIds ?? [])]
     const validAccounts = accountIds.length === 0 ? [] : await prisma.connectedAccount.findMany({ where: { id: { in: accountIds }, userId: req.user!.id, status: 'connected' }, select: { id: true } })

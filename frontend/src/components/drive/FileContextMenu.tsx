@@ -17,8 +17,13 @@ export function FileContextMenu({ x, y, file, onClose, onView, onDownload, onRen
         <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onRename}><Edit3 className="h-4 w-4" />Rename</Button>
         <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onMove}><FolderInput className="h-4 w-4" />Move to Folder</Button>
         <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onDetails}><Info className="h-4 w-4" />Details</Button>
-        <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onShare}><Link2 className="h-4 w-4" />Share Link</Button>
-        <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onInvite}><UserPlus className="h-4 w-4" />Invite Member</Button>
+        {/* Hiding sharing features for MVP */}
+        {false && (
+          <>
+            <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onShare}><Link2 className="h-4 w-4" />Share Link</Button>
+            <Button variant="ghost" className="h-12 w-full justify-start sm:h-11" onClick={onInvite}><UserPlus className="h-4 w-4" />Invite Member</Button>
+          </>
+        )}
         <Button variant="danger" className="h-12 w-full justify-start sm:h-11" onClick={onDelete}><Trash2 className="h-4 w-4" />Delete</Button>
       </div>
     </>

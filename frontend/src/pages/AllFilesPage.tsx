@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Archive, CheckCircle, ChevronDown, ClipboardPaste, FolderInput, FolderPlus, LayoutGrid, List, MoreVertical, RefreshCw, Star, Trash2, Upload, X } from 'lucide-react'
+import { Archive, CheckCircle, ChevronDown, ClipboardPaste, FolderInput, FolderPlus, LayoutGrid, Link2, List, MoreVertical, RefreshCw, Star, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
@@ -15,7 +15,6 @@ import { defaultFolderColor, defaultFolderIconUrl, FolderVisual, folderColorOpti
 import { PageHeader } from '@/components/drive/PageHeader'
 import { Input } from '@/components/ui/input'
 import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
-import { getAccessToken } from '@/lib/auth'
 import { createPlyr, ensurePlyr } from '@/lib/plyr'
 import { getPreviewKind, officeViewerUrl } from '@/lib/preview'
 import type { FileItem, FolderItem } from '@/data/drive-data'
@@ -29,7 +28,7 @@ type UploadResult = { file?: unknown; files?: unknown[]; failed?: Array<{ fileNa
 type SyncGoogleResult = { accounts: number; created: number; updated: number; deleted: number }
 type FileViewMode = 'list' | 'grid'
 
-const fileViewStorageKey = '9drive:all-files-view-mode'
+const fileViewStorageKey = 'casanest:all-files-view-mode'
 
 function getStoredFileViewMode(): FileViewMode {
   const stored = localStorage.getItem(fileViewStorageKey)
@@ -129,6 +128,42 @@ export function AllFilesPage() {
   const [inviteMessage, setInviteMessage] = useState('')
   const [inviting, setInviting] = useState(false)
   const previewVideoRef = useRef<HTMLVideoElement | null>(null)
+  const [connecting, setConnecting] = useState(false)
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
+      const status = event.data.status
+      if (status === 'success') {
+        setMessage('Google Drive connected.')
+      } else if (status === 'already_linked') {
+        setMessage('This Google Drive account is already linked to another CasaNest account.')
+      } else if (status === 'limit_reached') {
+        setMessage('You can connect up to 4 Google Drive accounts only.')
+      } else if (status === 'duplicate') {
+        setMessage('This Google Drive account is already connected.')
+      } else {
+        setMessage('Google Drive connection failed.')
+      }
+      loadAll().catch(() => undefined)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  async function connectDrive() {
+    setConnecting(true)
+    setMessage('')
+    try {
+      const data = await apiFetch<{ url: string }>('/connected-accounts/google/connect-url')
+      const popup = window.open(data.url, 'google-drive-connect', 'width=540,height=720')
+      if (!popup) window.location.href = data.url
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to start Google Drive connection')
+    } finally {
+      setConnecting(false)
+    }
+  }
 
   async function loadFiles() {
     const params = new URLSearchParams()
@@ -153,6 +188,21 @@ export function AllFilesPage() {
   async function loadAll() {
     await Promise.all([loadFiles(), loadFolders()])
   }
+
+  useEffect(() => {
+    if (searchParams.get('upload') === 'true') {
+      setUploadOpen(true)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('upload')
+      setSearchParams(nextParams, { replace: true })
+    }
+    if (searchParams.get('newFolder') === 'true') {
+      setFolderOpen(true)
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.delete('newFolder')
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [searchParams])
 
   useEffect(() => {
     loadAll().catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to load files'))
@@ -226,7 +276,7 @@ export function AllFilesPage() {
       setUploadOpen(false)
       setMessage(failedCount > 0 ? `${uploadedCount} files uploaded. ${failedCount} failed.` : selectedFiles.length === 1 ? 'File uploaded to Google Drive.' : `${uploadedCount} files uploaded to Google Drive.`)
       await loadFiles()
-      window.dispatchEvent(new Event('9drive:storage-changed'))
+      window.dispatchEvent(new Event('casanest:storage-changed'))
     } catch (error) {
       setUploadProgress((current) => ({ ...current, status: 'error', files: current.files.map((file) => ({ ...file, status: 'error' })) }))
       setMessage(error instanceof Error ? error.message : 'Upload failed')
@@ -242,7 +292,7 @@ export function AllFilesPage() {
       const result = await apiFetch<SyncGoogleResult>('/files/sync-google', { method: 'POST', body: JSON.stringify({}) })
       setMessage(`Google Drive synced. ${result.created} added, ${result.updated} updated, ${result.deleted} removed across ${result.accounts} account${result.accounts === 1 ? '' : 's'}.`)
       await loadAll()
-      window.dispatchEvent(new Event('9drive:storage-changed'))
+      window.dispatchEvent(new Event('casanest:storage-changed'))
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to sync Google Drive')
     } finally {
@@ -273,8 +323,7 @@ export function AllFilesPage() {
     return new Promise<UploadResult>((resolve, reject) => {
       const request = new XMLHttpRequest()
       request.open('POST', `${API_URL}/uploads`)
-      const token = getAccessToken()
-      if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
+      request.withCredentials = true
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return
         onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
@@ -368,7 +417,7 @@ export function AllFilesPage() {
 
   async function downloadFile() {
     if (!activeFile?.id) return
-    const response = await fetch(`${API_URL}/files/${activeFile.id}/download`, { headers: { Authorization: `Bearer ${getAccessToken()}` } })
+    const response = await fetch(`${API_URL}/files/${activeFile.id}/download`, { credentials: 'include' })
     if (!response.ok) throw new Error('Download failed')
     const blob = await response.blob()
     const url = URL.createObjectURL(blob)
@@ -408,7 +457,7 @@ export function AllFilesPage() {
     setDeleteOpen(false)
     clearSelection()
     await loadFiles()
-    window.dispatchEvent(new Event('9drive:storage-changed'))
+    window.dispatchEvent(new Event('casanest:storage-changed'))
   }
 
   async function shareFile() {
@@ -446,7 +495,7 @@ export function AllFilesPage() {
       setInviteEmail('')
       setInviteRole('viewer')
       setInviteMessage('Invite saved. Member will appear in Shared.')
-      window.dispatchEvent(new Event('9drive:invites-changed'))
+      window.dispatchEvent(new Event('casanest:invites-changed'))
     } catch (error) {
       setInviteMessage(error instanceof Error ? error.message : 'Failed to send invite')
     } finally {
@@ -520,7 +569,7 @@ export function AllFilesPage() {
   return (
     <>
       <div onContextMenu={openEmptyContextMenu} className="min-h-[620px] w-full min-w-0">
-      <PageHeader title={activeFolder ? <span className="block min-w-0 truncate"><button className="text-blue-600 hover:underline" onClick={closeFolder}>All Files</button>{folderBreadcrumbs.map((folder, index) => <span key={folder.id}><span className="text-slate-400"> / </span>{index === folderBreadcrumbs.length - 1 ? <span>{folder.name}</span> : <button className="text-blue-600 hover:underline" onClick={() => folder.id && openFolderById(folder.id)}>{folder.name}</button>}</span>)}</span> : 'All Files'} actions={<><Button className="w-full" onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" />Upload</Button><Button className="w-full" variant="outline" onClick={() => setFolderOpen(true)}><FolderPlus className="h-4 w-4" />New Folder</Button><Button className="w-full" variant="outline" disabled={syncingDrive} onClick={syncGoogleDrive}><RefreshCw className={syncingDrive ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingDrive ? 'Syncing...' : 'Sync Drive'}</Button></>} />
+      <PageHeader title={activeFolder ? <span className="block min-w-0 truncate"><button className="text-blue-600 hover:underline" onClick={closeFolder}>All Files</button>{folderBreadcrumbs.map((folder, index) => <span key={folder.id}><span className="text-slate-400"> / </span>{index === folderBreadcrumbs.length - 1 ? <span>{folder.name}</span> : <button className="text-blue-600 hover:underline" onClick={() => folder.id && openFolderById(folder.id)}>{folder.name}</button>}</span>)}</span> : 'All Files'} actions={<><Button className="w-full sm:w-auto" onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" />Upload</Button><Button className="w-full sm:w-auto" variant="outline" onClick={() => setFolderOpen(true)}><FolderPlus className="h-4 w-4" />New Folder</Button><Button className="w-full sm:w-auto" variant="outline" disabled={syncingDrive} onClick={syncGoogleDrive}><RefreshCw className={syncingDrive ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingDrive ? 'Syncing...' : 'Sync Drive'}</Button><Button className="w-full sm:w-auto" variant="outline" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Add Google Drive'}</Button></>} />
       {message ? <p className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       {!activeFolder && (recentFolders.length > 0 ? <FolderGrid items={recentFolders} mobileTwoColumns onFolderMenu={openFolderMenu} onFolderOpen={openFolder} /> : <p className="mt-8 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No folders yet. Click New Folder to organize uploads.</p>)}
       {!activeFolder && moreFolders.length > 0 ? <Card className="mt-5 p-4 sm:p-5"><h2 className="font-extrabold">More Folders</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{moreFolders.map((folder) => <div key={folder.id} onClick={() => openFolder(folder)} onContextMenu={(event) => openFolderMenu(event, folder)} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 hover:bg-slate-100"><div className="flex min-w-0 items-center gap-3"><FolderVisual folder={folder} className="h-6 w-6 shrink-0" /><div className="min-w-0"><p className="truncate font-semibold">{folder.name}</p><p className="truncate text-xs text-slate-500">{folder.updated}</p></div></div><button className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white sm:h-8 sm:w-8 sm:rounded-lg" onClick={(event) => { event.stopPropagation(); openFolderMenu(event, folder) }} aria-label={`Open ${folder.name} menu`}><MoreVertical className="h-5 w-5" /></button></div>)}</div></Card> : null}
@@ -530,7 +579,7 @@ export function AllFilesPage() {
         <div className="flex gap-3"><Button variant={fileViewMode === 'grid' ? 'soft' : 'outline'} size="icon" aria-label="Show files as grid" aria-pressed={fileViewMode === 'grid'} onClick={() => changeFileViewMode('grid')}><LayoutGrid className="h-5 w-5" /></Button><Button variant={fileViewMode === 'list' ? 'soft' : 'outline'} size="icon" aria-label="Show files as list" aria-pressed={fileViewMode === 'list'} onClick={() => changeFileViewMode('list')}><List className="h-5 w-5" /></Button></div>
       </div>
       {cutFolder ? <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-700"><ClipboardPaste className="mr-2 inline h-4 w-4" />Cut folder: {cutFolder.name}. Press Ctrl+V or right-click empty area to paste here.</p> : null}
-      {files.length === 0 ? <p className="mt-5 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">{searchQuery ? `No files found for "${searchQuery}".` : activeFolder ? 'No files in this folder yet.' : 'No uploaded files yet. Connect Google Drive in Settings, then upload a file.'}</p> : fileViewMode === 'grid' ? <FileGrid files={files} selectedFileIds={selectedFileIds} onToggleFile={toggleFileSelection} onFileContextMenu={openContext} /> : <FileTable files={files} selectedFileIds={selectedFileIds} allSelected={allVisibleSelected} onToggleFile={toggleFileSelection} onToggleAll={toggleAllVisibleFiles} onFileContextMenu={openContext} />}
+      {files.length === 0 ? <p className="mt-5 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">{searchQuery ? `No files found for "${searchQuery}".` : activeFolder ? 'No files in this folder yet.' : 'No active files. Connect a Google Drive account or restore from 3-Day Backup.'}</p> : fileViewMode === 'grid' ? <FileGrid files={files} selectedFileIds={selectedFileIds} onToggleFile={toggleFileSelection} onFileContextMenu={openContext} /> : <FileTable files={files} selectedFileIds={selectedFileIds} allSelected={allVisibleSelected} onToggleFile={toggleFileSelection} onToggleAll={toggleAllVisibleFiles} onFileContextMenu={openContext} />}
       </div>
       <EmptyAreaContextMenu x={emptyContextMenu.x} y={emptyContextMenu.y} open={emptyContextMenu.open} canPasteFolder={Boolean(cutFolder)} onClose={() => setEmptyContextMenu({ x: 0, y: 0, open: false })} onUpload={() => { setUploadOpen(true); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} onCreateFolder={() => { setFolderOpen(true); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} onPasteFolder={() => { pasteFolder().catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to paste folder')); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} />
       <FileContextMenu x={contextMenu.x} y={contextMenu.y} file={contextMenu.file} onClose={() => setContextMenu({ x: 0, y: 0, file: null })} onView={viewFile} onDownload={downloadFile} onRename={() => { setRenameValue(activeFile?.name ?? ''); setRenameOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onMove={() => { setMoveOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onDetails={() => { setDetailOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onShare={shareFile} onInvite={inviteToFile} onDelete={() => { setDeleteOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} />

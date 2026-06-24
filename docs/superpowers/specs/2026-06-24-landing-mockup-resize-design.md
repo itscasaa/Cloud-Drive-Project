@@ -4,7 +4,7 @@
 **Status**: Draft  
 
 ## Problem Description
-The interactive dashboard preview mockup on the CasaNest landing page is currently too large, occupying excessive screen space on desktop devices. We want to scale it down, limit its height, and make it look clean and visually balanced—like a polished product screenshot rather than a full-size embedded dashboard.
+The interactive dashboard preview mockup on the CasaNest landing page is currently too large, occupying excessive screen space on desktop devices. We want to scale it down, limit its height, and make it look clean and visually balanced—like a polished product screenshot rather than a full-size embedded dashboard. Additionally, we want to hide extra clutter on mobile/tablet screens to keep the presentation compact.
 
 ## Proposed Design
 
@@ -16,6 +16,9 @@ The interactive dashboard preview mockup on the CasaNest landing page is current
 
 ### 2. Inner Component Updates in `LandingDashboardPreview.tsx`
 * **Avoid Style Redundancy**: Simplify the main wrapper div to not duplicate borders, shadows, or rounded corners, since they are now handled by the parent wrapper.
+* **Mobile / Tablet Clutter Reduction**:
+  - Hide the **Connected Storage Drives** card on screens below the `md` breakpoint (`hidden md:block`).
+  - Hide the **Right Column** (containing the Warning Card and Security Status checklist) on screens below the `md` breakpoint (`hidden md:block`).
 
 ## Verification Plan
 * Run `npm run build` inside `frontend/` to ensure Vite successfully compiles the project.

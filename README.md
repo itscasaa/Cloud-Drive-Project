@@ -1,15 +1,15 @@
-![9Drive cover](https://i.ibb.co.com/35BySv1C/image.png)
+![CasaNest cover](https://i.ibb.co.com/35BySv1C/image.png)
 
-# 9Drive
+# CasaNest
 
-9Drive is a storage gateway web app for connecting multiple Google Drive accounts into one virtual storage dashboard. Users can register with email/password or Google, automatically connect their first Google Drive account during Google sign-in, track quota, upload files into a dedicated `9drive` Drive folder, organize files with virtual folders, preview files, sync MySQL from Google Drive, and let the backend route uploads to the Drive account with enough free space.
+CasaNest is a storage gateway web app for connecting multiple Google Drive accounts into one virtual storage dashboard. Users can register with email/password or Google, automatically connect their first Google Drive account during Google sign-in, track quota, upload files into a dedicated `casanest` Drive folder, organize files with virtual folders, preview files, sync MySQL from Google Drive, and let the backend route uploads to the Drive account with enough free space.
 
 ## Features
 
 - Google Drive and S3-compatible storage gateway in one virtual storage dashboard.
 - S3-compatible storage support with custom endpoints for providers like MinIO, Cloudflare R2, Wasabi, Backblaze B2, and AWS S3.
 - Direct upload stream to Google Drive. Files are not stored on the server.
-- Google Drive uploads are stored under a root `9drive` folder.
+- Google Drive uploads are stored under a root `casanest` folder.
 - Direct upload stream to S3-compatible storage through the backend without exposing storage credentials to the frontend.
 - Upload routing policies with most-available, round-robin, and priority-order modes.
 - External upload API using API keys at `POST /api/v1/uploads`.
@@ -17,14 +17,14 @@
 - Email/password auth plus Google sign-in/register with automatic first Drive connection.
 - Multi-account storage quota summary.
 - Quota tracker page.
-- Manual sync from the Google Drive `9drive` folder back into MySQL.
+- Manual sync from the Google Drive `casanest` folder back into MySQL.
 - Virtual folders.
 - File preview, download, rename, move, and delete actions.
 - In-app API documentation with cURL and JavaScript upload examples.
 - Bottom-right upload progress panel.
 - Bearer token authentication.
 - Global Google OAuth config stored encrypted in DB.
-- Optional reCAPTCHA on email/password registration.
+- Optional reCAPTCHA on email/password registration (currently disabled).
 - MySQL database with Prisma migrations.
 - Express + TypeScript backend.
 - React + Vite frontend.
@@ -33,9 +33,9 @@
 
 Live preview: https://9drive.zenhosta.com
 
-![9Drive dashboard preview](https://i.ibb.co.com/HLjG3JRf/image.png)
+![CasaNest dashboard preview](https://i.ibb.co.com/HLjG3JRf/image.png)
 
-![9Drive shared file preview](https://i.ibb.co.com/QLpYGmx/image.png)
+![CasaNest shared file preview](https://i.ibb.co.com/QLpYGmx/image.png)
 
 ## Star History
 
@@ -70,7 +70,7 @@ password: empty
 
 ```bash
 git clone git@github.com:zenhosta/9drive.git
-cd 9drive
+cd casanest
 ```
 
 Install backend dependencies:
@@ -92,13 +92,13 @@ npm install
 Create database:
 
 ```sql
-CREATE DATABASE 9drive;
+CREATE DATABASE casanest;
 ```
 
 If using MySQL CLI:
 
 ```bash
-mysql -u root -e "CREATE DATABASE IF NOT EXISTS 9drive;"
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS casanest;"
 ```
 
 ## 3. Backend Environment
@@ -139,7 +139,7 @@ VITE_API_URL=http://localhost:4000
 VITE_RECAPTCHA_SITE_KEY=
 ```
 
-Captcha is disabled when `VITE_RECAPTCHA_SITE_KEY` or backend `RECAPTCHA_SECRET_KEY` is empty. Set both values to enable captcha on registration.
+*(Note: Google reCAPTCHA is currently disabled and hidden in Settings)*
 
 ## 5. Run Prisma Migrations
 
@@ -226,12 +226,12 @@ Developer contact email
 4. Add scopes:
 
 ```txt
-https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/drive.file
 https://www.googleapis.com/auth/userinfo.email
 https://www.googleapis.com/auth/userinfo.profile
 ```
 
-Full Drive access is required so Google sign-in can connect the first Drive account automatically and sync files manually added to the `9drive` folder.
+The restricted `drive.file` scope is used to ensure privacy; CasaNest only manages files and folders you upload or create through the application, and will not scan or access other files in your Google Drive.
 
 5. If publishing status is `Testing`, add test users.
 
@@ -367,7 +367,7 @@ Edit `.env`:
 
 ```env
 MYSQL_ROOT_PASSWORD=root
-MYSQL_DATABASE=9drive
+MYSQL_DATABASE=casanest
 
 FRONTEND_URL=http://localhost:5173
 VITE_API_URL=http://localhost:4000
@@ -382,7 +382,7 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:4000/connected-accounts/google/callback
 ```
 
-Captcha is disabled when either `VITE_RECAPTCHA_SITE_KEY` or `RECAPTCHA_SECRET_KEY` is empty.
+(Note: Google reCAPTCHA is currently disabled and hidden in Settings)
 
 ### 2. Start Containers
 
@@ -487,8 +487,8 @@ http://localhost:5173
 6. Confirm quota appears.
 7. Open `All Files`.
 8. Create nested virtual folders.
-9. Upload a file and confirm it appears under Google Drive root folder `9drive`.
-10. Add or remove a file manually inside Google Drive folder `9drive`, then click `Sync Drive` in All Files.
+9. Upload a file and confirm it appears under Google Drive root folder `casanest`.
+10. Add or remove a file manually inside Google Drive folder `casanest`, then click `Sync Drive` in All Files.
 11. Watch bottom-right upload progress.
 12. Right-click file row for actions:
 
@@ -580,7 +580,7 @@ file
 ## Security Notes
 
 - Backend never stores uploaded files on disk.
-- Uploads are streamed through the backend to Google Drive folder `9drive`.
+- Uploads are streamed through the backend to Google Drive folder `casanest`.
 - Google tokens are encrypted in MySQL.
 - Refresh tokens for app sessions are hashed in MySQL.
 - Google auth handoff tokens, public share tokens, and preview tokens are hashed before lookup/use.

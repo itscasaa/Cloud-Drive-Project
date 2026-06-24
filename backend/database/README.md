@@ -1,13 +1,13 @@
 # Database Setup & Import Guide
 
-This directory contains the manual MySQL/MariaDB database setup file (`setup.sql`) for **9Drive**. 
+This directory contains the manual MySQL/MariaDB database setup file (`setup.sql`) for **CasaNest**. 
 
 ---
 
 ## ⚠️ Important Note on Prisma Migrations
 
 This project is built using **Prisma ORM**. 
-- **Manual SQL Import is Optional:** If you are setting up the project locally with Node.js installed, you can simply run `npm run prisma:migrate` from the `backend/` directory. Prisma will automatically create the `9drive` database and apply all migrations.
+- **Manual SQL Import is Optional:** If you are setting up the project locally with Node.js installed, you can simply run `npm run prisma:migrate` from the `backend/` directory. Prisma will automatically create the `9drive` database (used by CasaNest) and apply all migrations.
 - **When to use Manual SQL Import:** Use `setup.sql` if you are setting up the database on a server using **phpMyAdmin**, **XAMPP MySQL**, or if you prefer to seed the database structure manually without running Prisma CLI commands.
 
 *Note: If you import the database manually and intend to run Prisma migrations later, you may need to mark the existing migrations as applied using `npx prisma migrate resolve --applied <migration_name>` to avoid conflict errors, or simply run the backend directly without running development migrations.*
@@ -40,7 +40,7 @@ mysql -u root -p < backend/database/setup.sql
 
 ## 2. Configuring `backend/.env`
 
-Create a file named `.env` inside the `backend/` directory if you haven't already. Populate the `DATABASE_URL` parameter to connect to your manual database:
+Create a file named `.env` inside the `backend/` directory if you haven't already. Populate the `DATABASE_URL` parameter to connect to your manual database (CasaNest uses `9drive` as the default database name for technical compatibility):
 
 ```env
 # Database connection string format: mysql://USER:PASSWORD@HOST:PORT/DATABASE
@@ -64,7 +64,7 @@ MAX_UPLOAD_BYTES=5368709120
 
 ## 3. Running the Backend After Import
 
-Once the database structure is imported and the `.env` file is configured, follow these steps to run the backend:
+Once the database structure is imported and the `.env` file is configured, follow these steps to run the CasaNest backend:
 
 1. Navigate to the `backend/` directory:
    ```bash

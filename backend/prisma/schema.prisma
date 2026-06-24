@@ -13,6 +13,7 @@ model User {
   email          String             @unique @db.VarChar(191)
   passwordHash   String             @map("password_hash") @db.VarChar(255)
   status         String             @default("active") @db.VarChar(32)
+  role           String             @default("user") @db.VarChar(32)
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   sessions       UserSession[]
@@ -150,6 +151,8 @@ model ConnectedAccount {
   lastError             String?         @map("last_error") @db.Text
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
+  disconnectedAt        DateTime?       @map("disconnected_at")
+  recoveryExpiresAt     DateTime?       @map("recovery_expires_at")
   user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerConfig        ProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: Cascade)
   storageAccount        StorageAccount?
@@ -158,7 +161,7 @@ model ConnectedAccount {
   uploadSessions        UploadSession[]
   s3StorageConfig       S3StorageConfig?
 
-  @@unique([userId, provider, providerAccountId])
+  @@unique([provider, providerAccountId])
   @@index([userId])
   @@index([userId, status, createdAt])
   @@map("connected_accounts")
@@ -175,7 +178,7 @@ model S3StorageConfig {
   accessKeyIdEncrypted     String           @map("access_key_id_encrypted") @db.Text
   secretAccessKeyEncrypted String           @map("secret_access_key_encrypted") @db.Text
   forcePathStyle           Boolean          @default(false) @map("force_path_style")
-  prefix                   String           @default("9drive") @db.VarChar(191)
+  prefix                   String           @default("casanest") @db.VarChar(191)
   quotaBytes               BigInt?          @map("quota_bytes")
   status                   String           @default("active") @db.VarChar(32)
   createdAt                DateTime         @default(now()) @map("created_at")

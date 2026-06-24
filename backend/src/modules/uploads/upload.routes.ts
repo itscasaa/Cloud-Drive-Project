@@ -1,3 +1,4 @@
+import { Transform } from 'node:stream'
 import Busboy from 'busboy'
 import type { NextFunction, Response } from 'express'
 import { Router } from 'express'
@@ -7,6 +8,14 @@ import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '../google/google.service.js'
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
+import { createRateLimiter } from '../../middleware/rate-limit.middleware.js'
+import { logAudit } from '../../utils/audit.js'
+
+export const uploadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Too many uploads. Please try again in a minute.',
+})
 
 export const uploadRouter = Router()
 
@@ -40,9 +49,18 @@ function byPriority<T extends { account: { id: string; createdAt: Date } }>(item
   })
 }
 
-async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByAccount = new Map<string, bigint>()) {
+async function selectAccount(user: { id: string; role?: string }, sizeBytes: bigint, reservedBytesByAccount = new Map<string, bigint>()) {
+  const isDemo = user.role === 'demo'
+  let targetUserId = user.id
+
+  if (isDemo) {
+    const admin = await prisma.user.findFirst({ where: { role: 'admin' } })
+    if (!admin) return null
+    targetUserId = admin.id
+  }
+
   const accounts = await prisma.connectedAccount.findMany({
-    where: { userId, provider: { in: ['google_drive', 's3'] }, status: 'connected' },
+    where: { userId: targetUserId, provider: { in: ['google_drive', 's3'] }, status: 'connected' },
     include: { storageAccount: true },
   })
 
@@ -53,17 +71,25 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
   }
 
   const fresh = await prisma.connectedAccount.findMany({
-    where: { userId, provider: { in: ['google_drive', 's3'] }, status: 'connected' },
+    where: { userId: targetUserId, provider: { in: ['google_drive', 's3'] }, status: 'connected' },
     include: { storageAccount: true },
   })
 
   const eligible = fresh
-    .map((account) => ({ account, availableBytes: account.storageAccount?.availableBytes === null || account.storageAccount?.availableBytes === undefined ? null : account.storageAccount.availableBytes - (reservedBytesByAccount.get(account.id) ?? 0n) }))
-    .filter(({ availableBytes }) => availableBytes === null || availableBytes >= sizeBytes)
+    .map((account) => {
+      const scopesArray = Array.isArray(account.scopes) ? account.scopes : []
+      const reconnectRequired = account.provider === 'google_drive' && !scopesArray.includes('https://www.googleapis.com/auth/drive.file')
+      return {
+        account,
+        reconnectRequired,
+        availableBytes: account.storageAccount?.availableBytes === null || account.storageAccount?.availableBytes === undefined ? null : account.storageAccount.availableBytes - (reservedBytesByAccount.get(account.id) ?? 0n)
+      }
+    })
+    .filter(({ availableBytes, reconnectRequired }) => !reconnectRequired && (availableBytes === null || availableBytes >= sizeBytes))
 
   if (eligible.length === 0) return null
 
-  const policy = await prisma.uploadRoutingPolicy.upsert({ where: { userId }, create: { userId, mode: 'most_available', priorityAccountIds: [] }, update: {} })
+  const policy = await prisma.uploadRoutingPolicy.upsert({ where: { userId: targetUserId }, create: { userId: targetUserId, mode: 'most_available', priorityAccountIds: [] }, update: {} })
   const mode = (['most_available', 'round_robin', 'priority'].includes(policy.mode) ? policy.mode : 'most_available') as RoutingMode
   const priorityAccountIds = normalizePriorityAccountIds(policy.priorityAccountIds)
 
@@ -72,7 +98,7 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
   if (mode === 'round_robin') {
     const ordered = byPriority(eligible, priorityAccountIds)
     const selected = ordered[policy.roundRobinCursor % ordered.length]?.account ?? ordered[0]?.account ?? null
-    await prisma.uploadRoutingPolicy.update({ where: { userId }, data: { roundRobinCursor: policy.roundRobinCursor + 1 } })
+    await prisma.uploadRoutingPolicy.update({ where: { userId: targetUserId }, data: { roundRobinCursor: policy.roundRobinCursor + 1 } })
     return selected
   }
 
@@ -134,13 +160,16 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           failed.push({ fileName, code: 'UPLOAD_SIZE_REQUIRED', message: 'sizeBytes field must be sent before file field.' })
           return
         }
-        if (meta.sizeBytes > BigInt(env.MAX_UPLOAD_BYTES)) {
+        
+        const isDemo = req.user!.role === 'demo'
+        const maxBytes = isDemo ? 5n * 1024n * 1024n : BigInt(env.MAX_UPLOAD_BYTES)
+        if (meta.sizeBytes > maxBytes) {
           fileStream.resume()
-          failed.push({ fileName, code: 'UPLOAD_TOO_LARGE', message: 'File exceeds max upload size.' })
+          failed.push({ fileName, code: 'UPLOAD_TOO_LARGE', message: isDemo ? 'File exceeds maximum upload size for Demo Mode (5MB).' : 'File exceeds max upload size.' })
           return
         }
 
-        const account = await selectAccount(req.user!.id, meta.sizeBytes, reservedBytesByAccount)
+        const account = await selectAccount(req.user!, meta.sizeBytes, reservedBytesByAccount)
         if (!account) {
           fileStream.resume()
           failed.push({ fileName, code: 'NO_ACCOUNT_WITH_ENOUGH_SPACE', message: 'No connected storage account has enough space for this upload.' })
@@ -154,9 +183,22 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
         logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
         let streamedBytes = 0n
-        fileStream.on('data', (chunk: Buffer) => {
-          streamedBytes += BigInt(chunk.length)
+        const counter = new Transform({
+          transform(chunk, encoding, callback) {
+            streamedBytes += BigInt(chunk.length)
+            this.push(chunk)
+            callback()
+          }
         })
+
+        fileStream.on('error', (err) => {
+          counter.destroy(err)
+        })
+        counter.on('error', (err) => {
+          logUpload('counter transform error', { fileName, message: err.message })
+        })
+
+        fileStream.pipe(counter)
 
         let providerFileId = ''
         let s3FileId: string | null = null
@@ -169,17 +211,24 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           })
           s3FileId = provisionalFile.id
           providerFileId = buildS3ObjectKey(config, req.user!.id, provisionalFile.id, fileName)
-          await uploadS3Object(config, providerFileId, fileStream, meta.mimeType)
+          await uploadS3Object(config, providerFileId, counter, meta.mimeType)
           await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
           completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
           logUpload('s3 upload completed', { sessionId: session.id, accountId: account.id, fileName })
+          await logAudit({
+            userId: req.user!.id,
+            action: 'upload',
+            entityType: 'file',
+            entityId: provisionalFile.id,
+            metadata: { fileName, sizeBytes: meta.sizeBytes.toString(), provider: 's3' }
+          })
         } else {
           const auth = await getAuthedGoogleClient(account)
           const drive = google.drive({ version: 'v3', auth })
           const appFolderId = await ensureGoogleAppFolder(account)
           const uploaded = await drive.files.create({
             requestBody: { name: fileName, parents: [appFolderId] },
-            media: { mimeType: meta.mimeType, body: fileStream },
+            media: { mimeType: meta.mimeType, body: counter },
             fields: 'id,name,mimeType,size',
           })
           providerFileId = uploaded.data.id ?? ''
@@ -199,6 +248,13 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         if (file) {
           logUpload('database file created', { sessionId: session.id, fileId: file.id, accountId: account.id })
           completed.push({ ...file, sizeBytes: file.sizeBytes.toString() })
+          await logAudit({
+            userId: req.user!.id,
+            action: 'upload',
+            entityType: 'file',
+            entityId: file.id,
+            metadata: { fileName: uploadedName, sizeBytes: meta.sizeBytes.toString(), provider: 'google_drive' }
+          })
         }
         await prisma.uploadSession.update({ where: { id: session.id }, data: { status: 'completed', completedAt: new Date() } })
         if (account.provider === 's3') syncS3Quota(account.id).catch(() => undefined)
@@ -249,4 +305,4 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
-uploadRouter.post('/', requireAuth, handleUpload)
+uploadRouter.post('/', requireAuth, uploadRateLimiter, handleUpload)
