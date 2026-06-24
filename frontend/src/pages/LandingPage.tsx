@@ -29,8 +29,8 @@ export function LandingPage() {
 
       {/* INTERACTIVE DASHBOARD PREVIEW */}
       <section className="relative z-20 -mt-28 bg-white px-4 pb-24">
-        <div className="landing-preview-scale-wrap">
-          <div className="landing-preview-scale-inner">
+        <div className="mobile-preview-frame">
+          <div className="mobile-preview-inner">
             <div className="rounded-[28px] border border-[#E5E7EB] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] overflow-hidden">
               <LandingDashboardPreview />
             </div>
