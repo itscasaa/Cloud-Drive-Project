@@ -52,10 +52,10 @@ export function LandingDashboardPreview() {
         </div>
 
         {/* Main Dashboard Panel Interface */}
-        <div className="flex flex-col lg:flex-row h-auto lg:h-[680px] divide-y lg:divide-y-0 lg:divide-x divide-[#E5E7EB]">
+        <div className="flex flex-row h-[680px] divide-x divide-[#E5E7EB]">
           
           {/* Left Sidebar navigation (Hidden on mobile) */}
-          <aside className="hidden lg:flex w-64 bg-white p-5 flex-col justify-between shrink-0 border-r border-[#E5E7EB]/30">
+          <aside className="flex w-64 bg-white p-5 flex-col justify-between shrink-0 border-r border-[#E5E7EB]/30">
             <div className="space-y-6">
               {/* Brand logo & tagline */}
               <div className="flex flex-col gap-1.5 pb-5 border-b border-slate-100/85">
@@ -129,7 +129,7 @@ export function LandingDashboardPreview() {
             </div>
 
             {/* Metrics Row */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 text-left">
+            <div className="grid gap-4 grid-cols-4 text-left">
               {/* Metric 1 */}
               <div className="flex flex-col justify-between p-5 border border-slate-100/80 shadow-sm bg-white rounded-2xl">
                 <div>
@@ -182,10 +182,10 @@ export function LandingDashboardPreview() {
             </div>
 
             {/* Asymmetrical 2-Column Grid */}
-            <div className="grid gap-6 grid-cols-1 xl:grid-cols-3 text-left">
+            <div className="grid gap-6 grid-cols-3 text-left">
               
               {/* Left Column (2/3 width on desktop) */}
-              <div className="xl:col-span-2 space-y-6">
+              <div className="col-span-2 space-y-6">
                 
                 {/* Recent Files card */}
                 <div className="bg-white p-6 border border-slate-100/80 shadow-sm rounded-2xl">
@@ -227,7 +227,7 @@ export function LandingDashboardPreview() {
                 </div>
 
                 {/* Connected Drives */}
-                <div className="hidden md:block bg-white p-6 border border-slate-100/80 shadow-sm rounded-2xl">
+                <div className="bg-white p-6 border border-slate-100/80 shadow-sm rounded-2xl">
                   <h3 className="text-lg font-bold text-slate-900">Connected Storage Drives</h3>
                   <p className="text-sm text-slate-500 mt-0.5">Physical account quota sync status and usage details.</p>
 
@@ -276,7 +276,7 @@ export function LandingDashboardPreview() {
               </div>
 
               {/* Right Column (1/3 width on desktop) */}
-              <div className="hidden md:block space-y-6">
+              <div className="space-y-6">
                 
                 {/* Recovery & Backup Warning Card */}
                 <div className="border border-amber-200 bg-amber-50/50 p-5 text-amber-900 shadow-sm rounded-2xl">

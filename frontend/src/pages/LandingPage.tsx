@@ -29,9 +29,13 @@ export function LandingPage() {
 
       {/* INTERACTIVE DASHBOARD PREVIEW */}
       <section className="relative z-20 -mt-28 bg-white px-4 pb-24">
-        <div className="mx-auto max-w-5xl md:h-[560px] h-auto">
+        <div className="mx-auto w-full max-w-6xl md:h-[560px] h-auto">
           <div className="origin-top md:scale-[0.9] scale-100 rounded-[28px] border border-[#E5E7EB] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)] overflow-hidden max-h-[620px]">
-            <LandingDashboardPreview />
+            <div className="overflow-x-auto overflow-y-hidden">
+              <div className="min-w-[1050px]">
+                <LandingDashboardPreview />
+              </div>
+            </div>
           </div>
         </div>
       </section>
