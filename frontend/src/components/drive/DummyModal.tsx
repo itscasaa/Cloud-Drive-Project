@@ -8,18 +8,18 @@ export function DummyModal({ open, title, description, children, onClose, classN
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button className="absolute inset-0 bg-slate-950/45" aria-label="Close modal" onClick={onClose} />
-      <div className={cn('relative max-h-[90vh] w-[92vw] sm:max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/20', className)}>
+      <button className="absolute inset-0 bg-slate-950/45 dark:bg-black/70" aria-label="Close modal" onClick={onClose} />
+      <div className={cn('relative max-h-[90vh] w-[92vw] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/20 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/40 sm:max-w-md', className)}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
-            <p className="mt-1 text-sm text-slate-500">{description}</p>
+            <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">{title}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
           </div>
           <Button variant="outline" size="icon" aria-label="Close modal" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="mt-5">{children}</div>
+        <div className="mt-5 text-slate-900 dark:text-slate-100">{children}</div>
       </div>
     </div>
   )

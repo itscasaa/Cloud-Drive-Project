@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Cloud, Database, Globe, HardDrive, Link2, RefreshCw, Trash2 } from 'lucide-react'
+import { Bell, Database, Globe, HardDrive, Link2, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { DummyModal } from '@/components/drive/DummyModal'
+import { GoogleDriveIcon } from '@/components/drive/GoogleDriveIcon'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
@@ -70,10 +71,7 @@ export function SettingsPage() {
   }, [user?.email])
 
   useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
-      
-      const status = event.data.status
+    function handleStatus(status: string) {
       if (status === 'success') {
         setMessage('Google Drive connected.')
         window.dispatchEvent(new Event('casanest:storage-changed'))
@@ -86,11 +84,32 @@ export function SettingsPage() {
       } else {
         setMessage('Google Drive connection failed.')
       }
-      
       load().catch(() => undefined)
     }
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
+      handleStatus(event.data.status)
+    }
+
+    function onStorage(event: StorageEvent) {
+      if (event.key === 'casanest:google-connected' && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue) as { status: string; timestamp: number }
+          if (Date.now() - parsed.timestamp < 10000) {
+            handleStatus(parsed.status)
+            localStorage.removeItem('casanest:google-connected')
+          }
+        } catch {}
+      }
+    }
+
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   async function connectDrive() {
@@ -158,91 +177,125 @@ export function SettingsPage() {
   }
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-7xl pb-8">
       <PageHeader
         title="Settings"
         description="Manage account and connected storage nests."
         actions={
           <>
             {false && (
-              <Button variant="outline" className="border-slate-200 bg-white" onClick={() => setS3Open(true)}>
-                <Database className="h-4 w-4 mr-1 text-slate-500" />
+              <Button variant="outline" className="w-full border-slate-200 bg-white sm:w-auto" onClick={() => setS3Open(true)}>
+                <Database className="mr-1 h-4 w-4 text-slate-500" />
                 Connect S3
               </Button>
             )}
-            <Button onClick={connectDrive} disabled={connecting || maxReached} title={maxReached ? "Maximum 4 Google Drive accounts per user." : undefined}>
-              <Link2 className="h-4 w-4 mr-1" />
-              {connecting ? 'Connecting...' : 'Connect Drive'}
+            <Button
+              className="w-full sm:w-auto"
+              onClick={connectDrive}
+              disabled={connecting || maxReached}
+              title={maxReached ? 'Maximum 4 Google Drive accounts per user.' : undefined}
+            >
+              <Link2 className="mr-1 h-4 w-4" />
+              <span className="truncate">{connecting ? 'Connecting...' : 'Connect Drive'}</span>
             </Button>
           </>
         }
       />
       {message ? (
-        <p className="mt-5 rounded-2xl bg-blue-50 border border-blue-100 p-4 text-sm font-semibold text-blue-800 animate-fadeIn">
+        <p className="mt-4 animate-fadeIn break-words rounded-2xl border border-blue-100 bg-blue-50 p-3.5 text-sm font-semibold text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300 sm:mt-5 sm:p-4">
           {message}
         </p>
       ) : null}
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="grid gap-6 min-w-0">
+      {/*
+        Layout:
+        - mobile: 1 col
+        - tablet (md/lg): main + summary row
+        - desktop (xl): main | sticky side rail
+      */}
+      <div className="mt-5 grid gap-4 sm:mt-8 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid min-w-0 gap-4 sm:gap-6">
           {/* User profile card */}
-          <Card className="p-6 border border-slate-100/80 shadow-sm">
-            <div className="flex items-center gap-4 sm:gap-5">
-              <img src={profileImageUrl} alt="User avatar" className="h-16 w-16 rounded-2xl object-cover sm:h-20 sm:w-20 shadow-sm" />
-              <div className="flex-1">
-                <h2 className="text-xl font-extrabold text-slate-900">{user?.name ?? 'User'}</h2>
-                <p className="text-sm text-slate-500 font-semibold mt-0.5">{user?.email ?? '-'}</p>
+          <Card className="border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-6">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+              <img
+                src={profileImageUrl}
+                alt="User avatar"
+                className="h-14 w-14 shrink-0 rounded-2xl object-cover shadow-sm sm:h-20 sm:w-20"
+              />
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-lg font-extrabold text-slate-900 dark:text-slate-50 sm:text-xl">
+                  {user?.name ?? 'User'}
+                </h2>
+                <p className="mt-0.5 break-all text-xs font-semibold text-slate-500 dark:text-slate-400 sm:text-sm">
+                  {user?.email ?? '-'}
+                </p>
               </div>
             </div>
           </Card>
 
           {/* Google Drive Integration card */}
-          <Card className="overflow-hidden p-6 border border-slate-100/80 shadow-sm bg-gradient-to-br from-white to-slate-50/30">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="flex items-center gap-3">
-                  <Cloud className="h-6 w-6 text-blue-600" />
-                  <h2 className="text-lg font-bold text-slate-900">Google Drive Integration</h2>
+          <Card className="overflow-hidden border border-slate-100/80 bg-gradient-to-br from-white to-slate-50/30 p-4 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:to-slate-950/80 sm:p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2.5 sm:items-center sm:gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 sm:h-11 sm:w-11">
+                    <GoogleDriveIcon className="h-5 w-5 sm:h-6 sm:w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-base font-bold leading-snug text-slate-900 dark:text-slate-50 sm:text-lg">
+                      Google Drive Integration
+                    </h2>
+                    <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 sm:hidden">
+                      Up to 4 accounts
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-2.5 text-sm text-slate-500 leading-relaxed">
+                <p className="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                   CasaNest only manages files and folders you upload through this app. Your existing Google Drive files are not scanned or modified.
                 </p>
-                <p className="mt-2 text-xs text-slate-400 font-semibold">
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-400 dark:text-slate-500">
                   Your files remain in your personal Google Drive storage. CasaNest stores encrypted access credentials and metadata records only.
                 </p>
-                <div className="mt-4 flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/50">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className="rounded-xl border border-slate-200/50 bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 sm:px-3 sm:text-xs">
                     Connected Drive Slots: {googleCount} / 4
                   </span>
-                  {maxReached && (
-                    <span className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 px-3 py-1.5 rounded-xl">
+                  {maxReached ? (
+                    <span className="rounded-xl border border-red-100 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 sm:px-3 sm:text-xs">
                       Limit reached
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
-              <Button className="w-full sm:w-36 shrink-0" onClick={connectDrive} disabled={connecting || maxReached}>
-                <Link2 className="h-4 w-4 mr-1.5" />
-                {connecting ? 'Opening...' : 'Connect Drive'}
-              </Button>
+              <div className="w-full shrink-0 md:w-40 lg:w-44">
+                <Button className="w-full" onClick={connectDrive} disabled={connecting || maxReached}>
+                  <Link2 className="mr-1.5 h-4 w-4 shrink-0" />
+                  <span className="truncate">{connecting ? 'Opening...' : 'Connect Drive'}</span>
+                </Button>
+              </div>
             </div>
           </Card>
 
           {/* S3 Storage Card */}
           {false && (
-            <Card className="overflow-hidden p-6 border border-slate-100/80 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+            <Card className="overflow-hidden border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
                   <div className="flex items-center gap-3">
-                    <Database className="h-6 w-6 text-blue-600" />
-                    <h2 className="text-lg font-bold text-slate-900">S3 Compatible Nest</h2>
+                    <Database className="h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400" />
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">S3 Compatible Nest</h2>
                   </div>
-                  <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                  <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                     Connect AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or any other S3 compatible custom storage endpoint.
                   </p>
                 </div>
-                <Button variant="outline" className="w-full sm:w-36 shrink-0 border-slate-200 bg-white" onClick={() => setS3Open(true)}>
-                  <Database className="h-4 w-4 mr-1.5 text-slate-500" />
+                <Button
+                  variant="outline"
+                  className="w-full shrink-0 border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 md:w-40"
+                  onClick={() => setS3Open(true)}
+                >
+                  <Database className="mr-1.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
                   Connect S3
                 </Button>
               </div>
@@ -250,73 +303,98 @@ export function SettingsPage() {
           )}
 
           {/* Connected list */}
-          <Card className="p-6 border border-slate-100/80 shadow-sm">
-            <h2 className="font-bold text-slate-900 text-lg mb-4">Connected Storage Accounts</h2>
+          <Card className="border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-6">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-50 sm:text-lg">Connected Storage Accounts</h2>
+              <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">{accounts.length} account{accounts.length === 1 ? '' : 's'}</p>
+            </div>
             {accounts.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">No connected storage accounts found.</p>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-8 text-center dark:border-slate-700 dark:bg-slate-800/40">
+                <GoogleDriveIcon className="mx-auto h-8 w-8 opacity-45 grayscale" />
+                <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">No connected storage accounts found.</p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Connect a Google Drive account to start pooling storage.</p>
+                <Button className="mt-4 w-full sm:w-auto" onClick={connectDrive} disabled={connecting || maxReached}>
+                  <Link2 className="mr-1.5 h-4 w-4" />
+                  Connect Drive
+                </Button>
+              </div>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid gap-3 sm:gap-4">
                 {accounts.map((account) => (
-                  <div key={account.id} className="rounded-2xl bg-slate-50/50 p-4 border border-slate-100 transition hover:bg-slate-50">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
+                  <div
+                    key={account.id}
+                    className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50 dark:hover:bg-slate-800/80 sm:p-4"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="break-all font-extrabold text-slate-900 text-sm">{account.displayName || account.email}</p>
-                          {account.reconnectRequired && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-0.5 text-[10px] font-bold text-red-700 border border-red-100">
+                          <p className="min-w-0 break-all text-sm font-extrabold text-slate-900 dark:text-slate-50">
+                            {account.displayName || account.email}
+                          </p>
+                          {account.reconnectRequired ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-100 bg-red-50 px-2.5 py-0.5 text-[10px] font-bold text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
                               ⚠️ Reconnect Required
                             </span>
-                          )}
+                          ) : null}
                         </div>
-                        <p className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wide">
+                        <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500 sm:text-xs">
                           {providerLabel(account.provider)} · {account.status}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 sm:flex">
+                      <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs sm:self-end lg:w-auto lg:max-w-none lg:shrink-0 lg:self-start">
                         {account.reconnectRequired ? (
                           <Button
-                            className="w-full text-xs font-bold bg-white border-slate-200 text-slate-800"
+                            className="w-full border-slate-200 bg-white text-xs font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                             variant="outline"
+                            size="sm"
                             onClick={connectDrive}
                             disabled={connecting}
                           >
-                            <Link2 className="h-4 w-4 mr-1" />
-                            Reconnect
+                            <Link2 className="mr-1 h-4 w-4 shrink-0" />
+                            <span className="truncate">Reconnect</span>
                           </Button>
                         ) : (
                           <Button
-                            className="w-full text-xs font-bold bg-white border-slate-200 text-slate-800"
+                            className="w-full border-slate-200 bg-white text-xs font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                             variant="outline"
+                            size="sm"
                             onClick={() => sync(account.id)}
                             disabled={syncingAccountId === account.id}
                           >
-                            <RefreshCw className={cn('h-3.5 w-3.5 mr-1', syncingAccountId === account.id && 'animate-spin')} />
-                            Sync
+                            <RefreshCw className={cn('mr-1 h-3.5 w-3.5 shrink-0', syncingAccountId === account.id && 'animate-spin')} />
+                            <span className="truncate">Sync</span>
                           </Button>
                         )}
                         <Button
                           className="w-full text-xs font-bold"
                           variant="danger"
+                          size="sm"
                           onClick={() => setAccountToDisconnect(account)}
                           disabled={disconnectingAccountId === account.id}
                         >
-                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          Disconnect
+                          <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">Disconnect</span>
                         </Button>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-                      <div className="rounded-xl bg-white p-3 border border-slate-100">
-                        <p className="font-extrabold text-slate-900 text-sm leading-none">{formatBytes(account.storageAccount?.usedBytes)}</p>
-                        <p className="mt-1.5 text-slate-400 text-[10px] uppercase font-bold tracking-wider">Used</p>
+                    <div className="mt-3.5 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-3">
+                      <div className="min-w-0 rounded-xl border border-slate-100 bg-white p-2.5 text-center dark:border-slate-700 dark:bg-slate-900 sm:p-3">
+                        <p className="truncate text-xs font-extrabold leading-none text-slate-900 dark:text-slate-50 sm:text-sm" title={formatBytes(account.storageAccount?.usedBytes)}>
+                          {formatBytes(account.storageAccount?.usedBytes)}
+                        </p>
+                        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 sm:text-[10px]">Used</p>
                       </div>
-                      <div className="rounded-xl bg-white p-3 border border-slate-100">
-                        <p className="font-extrabold text-slate-900 text-sm leading-none">{storageLimitLabel(account)}</p>
-                        <p className="mt-1.5 text-slate-400 text-[10px] uppercase font-bold tracking-wider">Total</p>
+                      <div className="min-w-0 rounded-xl border border-slate-100 bg-white p-2.5 text-center dark:border-slate-700 dark:bg-slate-900 sm:p-3">
+                        <p className="truncate text-xs font-extrabold leading-none text-slate-900 dark:text-slate-50 sm:text-sm" title={storageLimitLabel(account)}>
+                          {storageLimitLabel(account)}
+                        </p>
+                        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 sm:text-[10px]">Total</p>
                       </div>
-                      <div className="rounded-xl bg-white p-3 border border-slate-100">
-                        <p className="font-extrabold text-slate-900 text-sm leading-none">{availableLabel(account)}</p>
-                        <p className="mt-1.5 text-slate-400 text-[10px] uppercase font-bold tracking-wider">Free</p>
+                      <div className="min-w-0 rounded-xl border border-slate-100 bg-white p-2.5 text-center dark:border-slate-700 dark:bg-slate-900 sm:p-3">
+                        <p className="truncate text-xs font-extrabold leading-none text-slate-900 dark:text-slate-50 sm:text-sm" title={availableLabel(account)}>
+                          {availableLabel(account)}
+                        </p>
+                        <p className="mt-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 sm:text-[10px]">Free</p>
                       </div>
                     </div>
                   </div>
@@ -326,22 +404,28 @@ export function SettingsPage() {
           </Card>
         </div>
 
-        {/* Right column */}
-        <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1 xl:gap-6 h-fit">
-          <Card className="p-5 border border-slate-100/80 shadow-sm">
-            <HardDrive className="h-6 w-6 text-blue-600" />
-            <h2 className="mt-3.5 font-extrabold text-slate-900 text-sm">Storage Pool</h2>
-            <p className="mt-1 text-xs text-slate-500 font-semibold">Active Drive Count: {accounts.length}</p>
+        {/* Side / summary rail */}
+        <div className="grid h-fit gap-3 sm:grid-cols-3 sm:gap-4 lg:sticky lg:top-4 lg:grid-cols-1 lg:gap-4 xl:top-6 xl:gap-5">
+          <Card className="border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-5">
+            <HardDrive className="h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" />
+            <h2 className="mt-3 text-sm font-extrabold text-slate-900 dark:text-slate-50">Storage Pool</h2>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+              Active Drive Count: {accounts.length}
+            </p>
           </Card>
-          <Card className="p-5 border border-slate-100/80 shadow-sm">
-            <Bell className="h-6 w-6 text-blue-600" />
-            <h2 className="mt-3.5 font-extrabold text-slate-900 text-sm">System Alerts</h2>
-            <p className="mt-1 text-xs text-slate-500 font-semibold">Email & app notifications enabled</p>
+          <Card className="border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-5">
+            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" />
+            <h2 className="mt-3 text-sm font-extrabold text-slate-900 dark:text-slate-50">System Alerts</h2>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+              Email & app notifications enabled
+            </p>
           </Card>
-          <Card className="p-5 border border-slate-100/80 shadow-sm">
-            <Globe className="h-6 w-6 text-blue-600" />
-            <h2 className="mt-3.5 font-extrabold text-slate-900 text-sm">Cloud Gateway</h2>
-            <p className="mt-1 text-xs text-slate-500 font-semibold">Local Node Gateway Active</p>
+          <Card className="border border-slate-100/80 p-4 shadow-sm dark:border-slate-800 sm:p-5">
+            <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" />
+            <h2 className="mt-3 text-sm font-extrabold text-slate-900 dark:text-slate-50">Cloud Gateway</h2>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+              Local Node Gateway Active
+            </p>
           </Card>
         </div>
       </div>
@@ -385,17 +469,19 @@ export function SettingsPage() {
 
       {/* Disconnect Google Modal */}
       <DummyModal open={Boolean(accountToDisconnect)} title="Disconnect storage?" description="This will remove this drive storage from CasaNest. Virtual folder index files mapping to this account will remain, but files will not stream." onClose={() => setAccountToDisconnect(null)}>
-        <div className="grid gap-4 mt-2">
-          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 text-xs">
-            <p className="font-extrabold text-slate-900 text-sm">{accountToDisconnect?.email}</p>
-            <p className="mt-1 text-slate-500 font-semibold">Total Pool Usage: {formatBytes(accountToDisconnect?.storageAccount?.usedBytes)}</p>
+        <div className="mt-2 grid gap-4">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800/60">
+            <p className="text-sm font-extrabold text-slate-900 dark:text-slate-50">{accountToDisconnect?.email}</p>
+            <p className="mt-1 font-semibold text-slate-500 dark:text-slate-400">
+              Total Pool Usage: {formatBytes(accountToDisconnect?.storageAccount?.usedBytes)}
+            </p>
           </div>
           <div className="grid gap-3 sm:flex sm:justify-end">
-            <Button variant="outline" className="border-slate-200" onClick={() => setAccountToDisconnect(null)} disabled={Boolean(disconnectingAccountId)}>
+            <Button variant="outline" className="border-slate-200 dark:border-slate-700" onClick={() => setAccountToDisconnect(null)} disabled={Boolean(disconnectingAccountId)}>
               Cancel
             </Button>
             <Button variant="danger" onClick={disconnect} disabled={Boolean(disconnectingAccountId)}>
-              <Trash2 className="h-4 w-4 mr-1.5" />
+              <Trash2 className="mr-1.5 h-4 w-4" />
               {disconnectingAccountId ? 'Disconnecting...' : 'Disconnect Account'}
             </Button>
           </div>
@@ -413,20 +499,24 @@ export function SettingsPage() {
         }
         onClose={() => setRecoveryModalInfo(null)}
       >
-        <div className="grid gap-4 mt-2">
+        <div className="mt-2 grid gap-4">
           {recoveryModalInfo?.allDriveAccountsDisconnected && (
-            <p className="text-sm font-semibold text-slate-800 leading-relaxed">
+            <p className="text-sm font-semibold leading-relaxed text-slate-800 dark:text-slate-200">
               Reconnect the same Google account to restore them.
             </p>
           )}
 
-          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 text-xs space-y-2.5">
-            <p className="font-bold text-slate-700">Account: <span className="font-extrabold text-slate-900">{recoveryModalInfo?.disconnectedAccountEmail}</span></p>
-            <p className="font-bold text-slate-700">Moved Files: <span className="font-extrabold text-slate-900">{recoveryModalInfo?.movedFilesCount}</span></p>
-            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+          <div className="space-y-2.5 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800/60">
+            <p className="font-bold text-slate-700 dark:text-slate-300">
+              Account: <span className="font-extrabold text-slate-900 dark:text-slate-50">{recoveryModalInfo?.disconnectedAccountEmail}</span>
+            </p>
+            <p className="font-bold text-slate-700 dark:text-slate-300">
+              Moved Files: <span className="font-extrabold text-slate-900 dark:text-slate-50">{recoveryModalInfo?.movedFilesCount}</span>
+            </p>
+            <p className="text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               To restore your files in CasaNest, reconnect the same Google Drive account you disconnected.
             </p>
-            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+            <p className="text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               Your original files remain safe in Google Drive. CasaNest only keeps metadata for 3 days.
             </p>
           </div>
@@ -434,7 +524,7 @@ export function SettingsPage() {
           <div className="grid gap-3 sm:flex sm:justify-end">
             <Button
               variant="outline"
-              className="border-slate-200 w-full sm:w-auto"
+              className="w-full border-slate-200 dark:border-slate-700 sm:w-auto"
               onClick={() => {
                 setRecoveryModalInfo(null)
                 navigate('/recovery')
@@ -453,7 +543,7 @@ export function SettingsPage() {
             </Button>
             <Button
               variant="outline"
-              className="border-slate-200 w-full sm:w-auto"
+              className="w-full border-slate-200 dark:border-slate-700 sm:w-auto"
               onClick={() => setRecoveryModalInfo(null)}
             >
               Close
@@ -461,6 +551,6 @@ export function SettingsPage() {
           </div>
         </div>
       </DummyModal>
-    </>
+    </div>
   )
 }

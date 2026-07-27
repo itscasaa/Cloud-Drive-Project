@@ -90,8 +90,15 @@ export function AllFilesPage() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const [shareUrl, setShareUrl] = useState('')
-  const [copiedShareLink, setCopiedShareLink] = useState(false)
+    const [shareUrl, setShareUrl] = useState('')
+    const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null)
+    const [shareAllowDownload, setShareAllowDownload] = useState(true)
+    const [shareHasPassword, setShareHasPassword] = useState(false)
+    const [shareExpiresIn, setShareExpiresIn] = useState<'1h' | '24h' | '7d' | '30d' | 'never'>('7d')
+    const [sharePassword, setSharePassword] = useState('')
+    const [shareCreating, setShareCreating] = useState(false)
+    const [shareError, setShareError] = useState('')
+    const [copiedShareLink, setCopiedShareLink] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewError, setPreviewError] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -131,9 +138,7 @@ export function AllFilesPage() {
   const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
-      const status = event.data.status
+    function handleStatus(status: string) {
       if (status === 'success') {
         setMessage('Google Drive connected.')
       } else if (status === 'already_linked') {
@@ -147,8 +152,30 @@ export function AllFilesPage() {
       }
       loadAll().catch(() => undefined)
     }
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
+      handleStatus(event.data.status)
+    }
+
+    function onStorage(event: StorageEvent) {
+      if (event.key === 'casanest:google-connected' && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue) as { status: string; timestamp: number }
+          if (Date.now() - parsed.timestamp < 10000) {
+            handleStatus(parsed.status)
+            localStorage.removeItem('casanest:google-connected')
+          }
+        } catch {}
+      }
+    }
+
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   async function connectDrive() {
@@ -460,14 +487,53 @@ export function AllFilesPage() {
     window.dispatchEvent(new Event('casanest:storage-changed'))
   }
 
-  async function shareFile() {
-    if (!activeFile?.id) return
-    const data = await apiFetch<{ url: string }>(`/files/${activeFile.id}/share`, { method: 'POST' })
-    setShareUrl(data.url)
-    setCopiedShareLink(false)
-    setShareOpen(true)
-    setContextMenu({ x: 0, y: 0, file: null })
-  }
+  function openShareModal() {
+      if (!activeFile?.id) return
+      setShareUrl('')
+      setShareExpiresAt(null)
+      setShareHasPassword(false)
+      setShareAllowDownload(true)
+      setShareExpiresIn('7d')
+      setSharePassword('')
+      setShareError('')
+      setCopiedShareLink(false)
+      setShareOpen(true)
+      setContextMenu({ x: 0, y: 0, file: null })
+    }
+
+    async function createShareLink(event?: FormEvent) {
+      event?.preventDefault()
+      if (!activeFile?.id) return
+      setShareCreating(true)
+      setShareError('')
+      try {
+        const data = await apiFetch<{
+          url: string
+          shareId: string
+          expiresAt: string | null
+          allowDownload: boolean
+          hasPassword: boolean
+        }>(`/files/${activeFile.id}/share`, {
+          method: 'POST',
+          body: JSON.stringify({
+            expiresIn: shareExpiresIn,
+            allowDownload: shareAllowDownload,
+            password: sharePassword.trim() ? sharePassword.trim() : null,
+            rotate: true,
+          }),
+        })
+        setShareUrl(data.url)
+        setShareExpiresAt(data.expiresAt)
+        setShareAllowDownload(data.allowDownload)
+        setShareHasPassword(data.hasPassword)
+        setCopiedShareLink(false)
+        window.dispatchEvent(new Event('casanest:shares-changed'))
+      } catch (error) {
+        setShareError(error instanceof Error ? error.message : 'Failed to create share link')
+      } finally {
+        setShareCreating(false)
+      }
+    }
 
   async function inviteToFile() {
     if (!activeFile?.id) return
@@ -582,7 +648,7 @@ export function AllFilesPage() {
       {files.length === 0 ? <p className="mt-5 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">{searchQuery ? `No files found for "${searchQuery}".` : activeFolder ? 'No files in this folder yet.' : 'No active files. Connect a Google Drive account or restore from 3-Day Backup.'}</p> : fileViewMode === 'grid' ? <FileGrid files={files} selectedFileIds={selectedFileIds} onToggleFile={toggleFileSelection} onFileContextMenu={openContext} /> : <FileTable files={files} selectedFileIds={selectedFileIds} allSelected={allVisibleSelected} onToggleFile={toggleFileSelection} onToggleAll={toggleAllVisibleFiles} onFileContextMenu={openContext} />}
       </div>
       <EmptyAreaContextMenu x={emptyContextMenu.x} y={emptyContextMenu.y} open={emptyContextMenu.open} canPasteFolder={Boolean(cutFolder)} onClose={() => setEmptyContextMenu({ x: 0, y: 0, open: false })} onUpload={() => { setUploadOpen(true); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} onCreateFolder={() => { setFolderOpen(true); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} onPasteFolder={() => { pasteFolder().catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to paste folder')); setEmptyContextMenu({ x: 0, y: 0, open: false }) }} />
-      <FileContextMenu x={contextMenu.x} y={contextMenu.y} file={contextMenu.file} onClose={() => setContextMenu({ x: 0, y: 0, file: null })} onView={viewFile} onDownload={downloadFile} onRename={() => { setRenameValue(activeFile?.name ?? ''); setRenameOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onMove={() => { setMoveOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onDetails={() => { setDetailOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onShare={shareFile} onInvite={inviteToFile} onDelete={() => { setDeleteOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} />
+      <FileContextMenu x={contextMenu.x} y={contextMenu.y} file={contextMenu.file} onClose={() => setContextMenu({ x: 0, y: 0, file: null })} onView={viewFile} onDownload={downloadFile} onRename={() => { setRenameValue(activeFile?.name ?? ''); setRenameOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onMove={() => { setMoveOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onDetails={() => { setDetailOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} onShare={openShareModal} onInvite={inviteToFile} onDelete={() => { setDeleteOpen(true); setContextMenu({ x: 0, y: 0, file: null }) }} />
       <FolderContextMenu x={folderContextMenu.x} y={folderContextMenu.y} folder={folderContextMenu.folder} onClose={() => setFolderContextMenu({ x: 0, y: 0, folder: null })} onCut={() => cutSelectedFolder(activeFolderForMenu)} onRename={() => { setFolderRenameValue(activeFolderForMenu?.name ?? ''); setFolderRenameColor(normalizeFolderColor(activeFolderForMenu?.color)); setFolderRenameIconUrl(activeFolderForMenu?.iconUrl ?? defaultFolderIconUrl); setFolderRenameOpen(true); setFolderContextMenu({ x: 0, y: 0, folder: null }) }} onInvite={inviteToFolder} onDelete={() => { setFolderDeleteOpen(true); setFolderContextMenu({ x: 0, y: 0, folder: null }) }} />
       <FileDetailsDrawer open={detailOpen} file={activeFile} onClose={() => setDetailOpen(false)} />
 
@@ -609,7 +675,87 @@ export function AllFilesPage() {
       <DummyModal open={renameOpen} title="Rename File" description={activeFile?.name ?? ''} onClose={() => setRenameOpen(false)}><form onSubmit={renameFile} className="grid gap-4"><Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} required /><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setRenameOpen(false)}>Cancel</Button><Button>Rename</Button></div></form></DummyModal>
       <DummyModal open={moveOpen} title="Move to Folder" description={selectedFileIds.size > 0 ? `Move ${selectedFileIds.size} files` : activeFile?.name ?? ''} onClose={() => setMoveOpen(false)}><form onSubmit={moveFile} className="grid gap-4"><select className="h-11 rounded-xl border border-slate-200 px-3 text-sm" value={selectedFolderId} onChange={(event) => setSelectedFolderId(event.target.value)}><option value="">No folder</option>{allFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setMoveOpen(false)}>Cancel</Button><Button>Move</Button></div></form></DummyModal>
       <DummyModal open={deleteOpen} title={selectedFileIds.size > 0 ? 'Delete Files' : 'Delete File'} description={selectedFileIds.size > 0 ? `Delete ${selectedFileIds.size} files from Google Drive?` : `Delete ${activeFile?.name ?? 'file'} from Google Drive?`} onClose={() => setDeleteOpen(false)}><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button><Button variant="danger" onClick={deleteFile}>Delete</Button></div></DummyModal>
-      <DummyModal open={shareOpen} title="Share Link" description={activeFile?.name ?? ''} onClose={() => setShareOpen(false)}><div className="grid gap-4"><Input value={shareUrl} readOnly /><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setShareOpen(false)}>Close</Button><Button onClick={copyShareLink}>{copiedShareLink ? <CheckCircle className="h-4 w-4" /> : null}{copiedShareLink ? 'Copied!' : 'Copy Link'}</Button></div>{copiedShareLink ? <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">Share link copied to clipboard.</p> : null}</div></DummyModal>
+      <DummyModal open={shareOpen} title="Share Link" description={activeFile?.name ?? 'Create a public CasaNest link (not Google Drive).'} onClose={() => setShareOpen(false)}>
+              <form onSubmit={createShareLink} className="grid gap-4">
+                <label className="grid gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Link expires
+                  <select
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-950/50"
+                    value={shareExpiresIn}
+                    onChange={(event) => setShareExpiresIn(event.target.value as typeof shareExpiresIn)}
+                  >
+                    <option value="1h">1 hour</option>
+                    <option value="24h">24 hours</option>
+                    <option value="7d">7 days (recommended)</option>
+                    <option value="30d">30 days</option>
+                    <option value="never">Never</option>
+                  </select>
+                </label>
+                <label className="flex cursor-pointer select-none items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 dark:border-slate-700 dark:bg-slate-800/70">
+                  <input
+                    type="checkbox"
+                    checked={shareAllowDownload}
+                    onChange={(event) => setShareAllowDownload(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:checked:bg-blue-500 dark:focus:ring-blue-400"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Allow download</span>
+                    <span className="mt-0.5 block text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      Off = view/preview only on CasaNest.
+                    </span>
+                  </span>
+                </label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Password (optional)
+                  <Input
+                    type="password"
+                    value={sharePassword}
+                    onChange={(event) => setSharePassword(event.target.value)}
+                    placeholder="Leave empty for open link"
+                    autoComplete="new-password"
+                  />
+                </label>
+                {shareError ? (
+                  <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                    {shareError}
+                  </p>
+                ) : null}
+                {shareUrl ? (
+                  <div className="grid gap-2">
+                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Public link</label>
+                    <Input value={shareUrl} readOnly />
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {shareHasPassword ? 'Password protected • ' : 'Open link • '}
+                      {shareAllowDownload ? 'Download on • ' : 'View only • '}
+                      {shareExpiresAt ? `Expires ${formatDate(shareExpiresAt)}` : 'Never expires'}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                    Choose security options, then create the link. Recipients open it on CasaNest — Google credentials stay private.
+                  </p>
+                )}
+                <div className="flex flex-wrap justify-end gap-3">
+                  <Button type="button" variant="outline" onClick={() => setShareOpen(false)}>
+                    Close
+                  </Button>
+                  <Button type="submit" disabled={shareCreating}>
+                    {shareCreating ? 'Creating…' : shareUrl ? 'Create new link' : 'Create link'}
+                  </Button>
+                  {shareUrl ? (
+                    <Button type="button" onClick={copyShareLink}>
+                      {copiedShareLink ? <CheckCircle className="h-4 w-4" /> : null}
+                      {copiedShareLink ? 'Copied!' : 'Copy Link'}
+                    </Button>
+                  ) : null}
+                </div>
+                {copiedShareLink ? (
+                  <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    Share link copied to clipboard.
+                  </p>
+                ) : null}
+              </form>
+            </DummyModal>
       <DummyModal open={folderRenameOpen} title="Rename Folder" description={activeFolderForMenu?.name ?? ''} onClose={() => setFolderRenameOpen(false)}><form onSubmit={renameFolder} className="grid gap-4"><Input value={folderRenameValue} onChange={(event) => setFolderRenameValue(event.target.value)} required /><FolderAppearanceFields color={folderRenameColor} iconUrl={folderRenameIconUrl} onColorChange={setFolderRenameColor} onIconChange={setFolderRenameIconUrl} /><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setFolderRenameOpen(false)}>Cancel</Button><Button>Rename</Button></div></form></DummyModal>
       <DummyModal open={folderDeleteOpen} title="Delete Folder" description={`Delete virtual folder ${activeFolderForMenu?.name ?? ''}? Files inside will remain uploaded.`} onClose={() => setFolderDeleteOpen(false)}><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setFolderDeleteOpen(false)}>Cancel</Button><Button variant="danger" onClick={deleteFolder}>Delete</Button></div></DummyModal>
       <DummyModal open={inviteOpen} title="Invite Member" description={`Share ${inviteTargetType === 'file' ? (activeFile?.name ?? 'file') : (activeFolderForMenu?.name ?? 'folder')} with a team member.`} onClose={() => setInviteOpen(false)}>

@@ -19,6 +19,10 @@ export function GoogleAuthPage() {
       setMessage('This Google Drive account is already linked to another CasaNest account.')
       return
     }
+    if (status === 'restricted_domain') {
+      setMessage('Hanya email dengan domain @gmail.com yang diijinkan untuk login Google.')
+      return
+    }
     if (status === 'error' || !token) {
       setMessage('Google sign-in failed. Please try again.')
       return
@@ -26,7 +30,7 @@ export function GoogleAuthPage() {
 
     apiFetch<AuthResponse>('/auth/google/exchange', { method: 'POST', skipAuth: true, body: JSON.stringify({ token }) })
       .then((data) => {
-        setAuthSession(data.accessToken, data.refreshToken, data.user)
+        setAuthSession(data.accessToken, data.refreshToken, data.user, { rememberMe: true })
         navigate('/all-files', { replace: true })
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.'))

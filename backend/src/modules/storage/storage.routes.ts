@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
+import { decryptAccountPublic } from '../../utils/pii.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 
 export const storageRouter = Router()
@@ -50,16 +51,18 @@ storageRouter.get('/summary', async (req: AuthRequest, res, next) => {
       totalBytes: summary.totalBytes.toString(),
       usedBytes: summary.usedBytes.toString(),
       availableBytes: summary.availableBytes.toString(),
-      accounts: accounts.map((account) => ({
-        id: account.id,
-        provider: account.provider,
-        email: account.email,
-        status: account.status,
+      accounts: accounts.map((account) => {
+        const decrypted = decryptAccountPublic(account)
+        return {
+        id: decrypted.id,
+        provider: decrypted.provider,
+        email: decrypted.email,
+        status: decrypted.status,
         totalBytes: account.storageAccount?.totalBytes?.toString() ?? null,
         usedBytes: account.storageAccount?.usedBytes.toString() ?? '0',
         availableBytes: account.storageAccount?.availableBytes?.toString() ?? null,
         lastSyncedAt: account.storageAccount?.lastSyncedAt ?? null,
-      })),
+      }}),
     })
   } catch (error) {
     return next(error)

@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-heading: "Plus Jakarta Sans", sans-serif;
   --font-body: "Plus Jakarta Sans", sans-serif;
@@ -14,6 +16,7 @@
   --color-outer-bg: #C9CCD1;
   --color-main-canvas: #FFFFFF;
   --color-dark-card: #111827;
+  --color-brand-bg: #F3F6FC;
 
   --animate-fade-in-up: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-fade-in: fade-in 0.5s ease-out forwards;
@@ -39,14 +42,40 @@
   }
 }
 
+/* Smooth theme transitions for dashboard chrome */
+html.theme-animating,
+html.theme-animating body,
+html.theme-animating body *:not(img):not(video):not(canvas):not(svg):not(path) {
+  transition:
+    background-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.28s ease,
+    box-shadow 0.35s ease,
+    fill 0.28s ease,
+    stroke 0.28s ease !important;
+}
+
+@keyframes theme-icon-pop {
+  0% { transform: scale(0.55) rotate(-25deg); opacity: 0.2; }
+  60% { transform: scale(1.18) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
 
 .mesh-gradient-bg {
   background-color: #F3F6FC;
-  background-image: 
+  background-image:
     radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.18), transparent 34%),
     radial-gradient(circle at 80% 5%, rgba(96, 165, 250, 0.28), transparent 36%),
     linear-gradient(180deg, #EEF4FF 0%, #F8FBFF 55%, #FFFFFF 100%);
   background-attachment: fixed;
+}
+
+html.dark .mesh-gradient-bg {
+  background-color: #0b1220;
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(37, 99, 235, 0.22), transparent 36%),
+    radial-gradient(circle at 82% 8%, rgba(56, 189, 248, 0.12), transparent 34%),
+    linear-gradient(180deg, #0b1220 0%, #0f172a 55%, #111827 100%);
 }
 
 @keyframes pulse-success {
@@ -72,6 +101,13 @@
   background: #D1D5DB;
 }
 
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -83,6 +119,27 @@ html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --color-brand-bg: #F3F6FC;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border-soft: #e2e8f0;
+  --text-strong: #0f172a;
+  --text-soft: #64748b;
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-text-primary: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-main-canvas: #0f172a;
+  --color-outer-bg: #020617;
+  --color-brand-bg: #0b1220;
+  --surface: #111827;
+  --surface-muted: #0f172a;
+  --border-soft: #1e293b;
+  --text-strong: #f1f5f9;
+  --text-soft: #94a3b8;
+  color: var(--color-text-primary);
 }
 
 * {
@@ -92,6 +149,80 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  background: var(--color-brand-bg);
+  color: var(--color-text-primary);
+}
+
+/*
+ * Global dark-mode contrast safety net.
+ * Many dashboard pages still use light-only Tailwind classes (text-slate-900,
+ * bg-white, bg-slate-50). These overrides keep text/logo/surfaces readable
+ * without requiring every page to be rewritten at once.
+ *
+ * IMPORTANT: marketing pages force-remove `.dark` via theme.ts so this net
+ * never recolors the light-only landing design.
+ */
+html.dark .text-slate-950,
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #e2e8f0 !important;
+}
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+html.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/50,
+html.dark .bg-slate-50\/30,
+html.dark .bg-slate-50\/60 {
+  background-color: rgb(15 23 42 / 0.72) !important;
+}
+html.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+html.dark .border-slate-100,
+html.dark .border-slate-100\/80,
+html.dark .border-slate-100\/60,
+html.dark .border-slate-200,
+html.dark .border-slate-200\/60 {
+  border-color: #1e293b !important;
+}
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-50\/50:hover,
+html.dark .hover\:bg-slate-50\/60:hover,
+html.dark .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
+}
+html.dark .hover\:bg-white\/80:hover {
+  background-color: rgb(30 41 59 / 0.85) !important;
+}
+html.dark .bg-blue-50 {
+  background-color: rgb(23 37 84 / 0.55) !important;
+}
+html.dark .text-blue-800 {
+  color: #bfdbfe !important;
+}
+html.dark .border-blue-100,
+html.dark .border-blue-200 {
+  border-color: #1e3a8a !important;
+}
+html.dark .shadow-blue-200 {
+  --tw-shadow-color: rgb(23 37 84 / 0.45);
+}
+
+/* Body stays light while marketing force-light is active (no dark class). */
+html.theme-force-light body {
+  background: #F3F6FC;
+  color: #111827;
 }
 
 button,
@@ -198,3 +329,168 @@ input {
     transform: scale(0.9) translateX(0px) translateY(0px);
   }
 }
+
+/* LENIS SMOOTH SCROLL STYLES */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
+}
+
+/* MARQUEE ANIMATION */
+@keyframes casanest-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: casanest-marquee 32s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: running !important;
+}
+
+/* Auth Pages View Transitions */
+.auth-brand-panel {
+  view-transition-name: auth-brand;
+}
+
+.auth-form-panel {
+  view-transition-name: auth-form;
+}
+
+/* Custom timings for premium, heavy slide-morph feel */
+::view-transition-group(auth-brand) {
+  animation-duration: 0.65s;
+  animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+::view-transition-group(auth-form) {
+  animation-duration: 0.65s;
+  animation-timing-function: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+/* Premium Entrance Keyframes & Animation Classes */
+@keyframes slide-from-left {
+  from {
+    transform: translate3d(-120px, 0, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-from-right {
+  from {
+    transform: translate3d(120px, 0, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-from-top {
+  from {
+    transform: translate3d(0, -80px, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-from-bottom {
+  from {
+    transform: translate3d(0, 80px, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up-stagger {
+  from {
+    transform: translate3d(0, 40px, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@media (min-width: 768px) {
+  .animate-login-brand {
+    animation: slide-from-left 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-login-form {
+    animation: slide-from-right 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-register-form {
+    animation: slide-from-left 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-register-brand {
+    animation: slide-from-right 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+@media (max-width: 767px) {
+  .animate-login-brand,
+  .animate-register-brand {
+    animation: slide-from-top 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-login-form,
+  .animate-register-form {
+    animation: slide-from-bottom 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+.animate-stagger-1 {
+  opacity: 0;
+  animation: fade-in-up-stagger 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.08s forwards;
+}
+
+.animate-stagger-2 {
+  opacity: 0;
+  animation: fade-in-up-stagger 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.16s forwards;
+}
+
+.animate-stagger-3 {
+  opacity: 0;
+  animation: fade-in-up-stagger 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.24s forwards;
+}
+
+.animate-stagger-4 {
+  opacity: 0;
+  animation: fade-in-up-stagger 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.32s forwards;
+}
+
+
+
+

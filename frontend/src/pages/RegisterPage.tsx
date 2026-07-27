@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Check } from 'lucide-react'
+import { Check, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,25 @@ export function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [captchaText, setCaptchaText] = useState('')
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaSvg, setCaptchaSvg] = useState('')
+
+  const loadCaptcha = async () => {
+    try {
+      const res = await apiFetch<{ svg: string; captchaToken: string }>('/auth/captcha', { skipAuth: true })
+      setCaptchaSvg(res.svg)
+      setCaptchaToken(res.captchaToken)
+      setCaptchaText('')
+    } catch (err) {
+      console.error('Failed to load captcha:', err)
+    }
+  }
+
+  useEffect(() => {
+    loadCaptcha()
+  }, [])
+
   // Bootstrap State
   const [setupRequired, setSetupRequired] = useState(false)
   const [bootstrapLoading, setBootstrapLoading] = useState(false)
@@ -46,6 +65,10 @@ export function RegisterPage() {
 
   async function submitBootstrap(event: FormEvent) {
     event.preventDefault()
+    if (!bootstrapForm.email.toLowerCase().endsWith('@gmail.com')) {
+      setError('Hanya email dengan domain @gmail.com yang diijinkan.')
+      return
+    }
     setBootstrapLoading(true)
     setError('')
     try {
@@ -69,18 +92,23 @@ export function RegisterPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      setError('Hanya email dengan domain @gmail.com yang diijinkan.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
       const data = await apiFetch<AuthResponse>('/auth/register', {
         method: 'POST',
         skipAuth: true,
-        body: JSON.stringify({ name, email, password, captchaToken: '' })
+        body: JSON.stringify({ name, email, password, captchaText, captchaToken })
       })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      setAuthSession(data.accessToken, data.refreshToken, data.user, { rememberMe: true })
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Register failed')
+      loadCaptcha()
     } finally {
       setLoading(false)
     }
@@ -90,8 +118,12 @@ export function RegisterPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await apiFetch<AuthResponse>('/auth/demo-login', { method: 'POST', skipAuth: true })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      const data = await apiFetch<AuthResponse>('/auth/demo-login', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ rememberMe: false }),
+      })
+      setAuthSession(data.accessToken, data.refreshToken, data.user, { rememberMe: false })
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demo login failed')
@@ -105,7 +137,7 @@ export function RegisterPage() {
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5">
         <Card className="w-full max-w-xl p-6 md:p-8 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-100">
           <div className="flex items-center gap-3">
-            <BrandLogo className="h-10 w-10 shadow-md shadow-blue-500/10" logoClassName="h-16 w-16" />
+            <BrandLogo transparentBg className="h-10 w-10" logoClassName="h-16 w-16" />
             <div>
               <h1 className="text-2xl font-extrabold text-slate-900">Initial Setup</h1>
               <p className="text-sm text-slate-500 font-medium">Configure your CasaNest gateway instance.</p>
@@ -135,14 +167,14 @@ export function RegisterPage() {
   return (
     <main className="flex min-h-screen w-full flex-col md:flex-row bg-slate-50">
       {/* Left Form Panel */}
-      <div className="w-full md:w-[45%] flex items-center justify-center p-6 sm:p-8 md:p-16 bg-white border-r border-slate-100 order-2 md:order-1">
+      <div className="auth-form-panel animate-register-form w-full md:w-[45%] flex items-center justify-center p-6 sm:p-8 md:p-16 bg-white border-r border-slate-100 order-2 md:order-1">
         <div className="w-full max-w-md space-y-8">
-          <div className="space-y-2">
+          <div className="space-y-2 animate-stagger-1">
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Create your CasaNest account</h1>
             <p className="text-sm text-slate-500 font-medium">Start managing your connected drives securely.</p>
           </div>
 
-          <form onSubmit={submit} className="space-y-5">
+          <form onSubmit={submit} className="space-y-5 animate-stagger-2">
             <div className="space-y-4">
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 Name
@@ -179,6 +211,37 @@ export function RegisterPage() {
                   className="h-11 rounded-xl"
                 />
               </label>
+
+              {/* Captcha Section */}
+              <div className="space-y-2.5">
+                <span className="text-sm font-semibold text-slate-700 block">Security Check</span>
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="border border-slate-200 rounded-xl overflow-hidden cursor-pointer bg-[#EAF5FF] flex items-center justify-center shrink-0 w-[150px] h-[50px] select-none"
+                    dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    onClick={loadCaptcha}
+                    title="Click to refresh captcha"
+                  />
+                  <button 
+                    type="button" 
+                    onClick={loadCaptcha} 
+                    className="p-3 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/80 rounded-xl border border-blue-100 transition shadow-sm active:scale-95 cursor-pointer h-[50px] px-4"
+                    title="Refresh Captcha"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                
+                <Input 
+                  type="text" 
+                  value={captchaText} 
+                  onChange={(e) => setCaptchaText(e.target.value)} 
+                  required 
+                  placeholder="Enter verification code"
+                  className="h-11 rounded-xl"
+                  autoComplete="off"
+                />
+              </div>
             </div>
 
 
@@ -209,14 +272,14 @@ export function RegisterPage() {
             </div>
           </form>
 
-          <p className="text-center text-sm font-medium text-slate-500">
+          <p className="text-center text-sm font-medium text-slate-500 animate-stagger-3">
             Already have an account?{' '}
-            <Link className="font-bold text-blue-600 hover:underline" to="/login">
+            <Link className="font-bold text-blue-600 hover:underline" to="/login" viewTransition>
               Login
             </Link>
           </p>
           
-          <div className="flex justify-center gap-3 text-[11px] font-bold text-slate-400 border-t border-slate-100 pt-6">
+          <div className="flex justify-center gap-3 text-[11px] font-bold text-slate-400 border-t border-slate-100 pt-6 animate-stagger-4">
             <Link to="/privacy" className="hover:text-slate-600 transition">Privacy Policy</Link>
             <span>•</span>
             <Link to="/terms" className="hover:text-slate-600 transition">Terms of Service</Link>
@@ -227,15 +290,25 @@ export function RegisterPage() {
       </div>
 
       {/* Right Brand Panel */}
-      <div className="w-full md:w-[55%] flex flex-col justify-between p-6 md:p-16 text-white relative overflow-hidden bg-gradient-to-br from-[#0B122A] via-[#1D4ED8] to-[#38BDF8] order-1 md:order-2">
+      <div className="auth-brand-panel animate-register-brand w-full md:w-[55%] flex flex-col justify-between p-6 md:p-16 text-white relative overflow-hidden bg-gradient-to-br from-[#0B122A] via-[#1D4ED8] to-[#38BDF8] order-1 md:order-2">
         {/* Decorative ambient glow */}
         <div className="absolute -left-20 -top-20 w-80 h-80 rounded-full bg-blue-400/10 blur-[100px] pointer-events-none" />
         <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-sky-400/10 blur-[100px] pointer-events-none" />
         
-        {/* Logo Section */}
-        <div className="flex items-center gap-3 relative z-10">
-          <BrandLogo className="h-10 w-10 md:h-12 md:w-12 shadow-xl shadow-blue-950/40" logoClassName="h-16 w-16 md:h-20 md:w-20" />
-          <span className="text-xl md:text-2xl font-extrabold tracking-tight">CasaNest</span>
+        {/* Logo Section & Back Button */}
+        <div className="flex items-center justify-between w-full relative z-10">
+          <div className="flex items-center gap-3">
+            <BrandLogo transparentBg className="h-10 w-10 md:h-12 md:w-12" logoClassName="h-16 w-16 md:h-20 md:w-20" />
+            <span className="text-xl md:text-2xl font-extrabold tracking-tight">CasaNest</span>
+          </div>
+          
+          <Link 
+            to="/" 
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 border border-white/15 hover:border-white/30 rounded-xl transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Nest
+          </Link>
         </div>
 
         {/* Content Section */}

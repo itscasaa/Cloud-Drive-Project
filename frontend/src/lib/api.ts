@@ -23,12 +23,25 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }))
-    if (response.status === 401) clearAuthSession()
+    // Public share password challenges are expected 401s — do not wipe session.
+    if (
+      response.status === 401 &&
+      error.code !== 'SHARE_PASSWORD_REQUIRED' &&
+      error.code !== 'INVALID_SHARE_PASSWORD' &&
+      !options.skipAuth
+    ) {
+      clearAuthSession()
+    }
     let errorMsg = error.message ?? 'Request failed'
     if (error.code === 'GOOGLE_OAUTH_RECONNECT_REQUIRED') {
-      errorMsg = 'Google Drive account must be reconnected to request the updated security scopes. Please go to Settings and click Reconnect.'
+      errorMsg =
+        'Google Drive account must be reconnected to request the updated security scopes. Please go to Settings and click Reconnect.'
     }
-    throw new Error(errorMsg)
+    const err = new Error(errorMsg) as Error & { code?: string; status?: number; details?: unknown }
+    err.code = error.code
+    err.status = response.status
+    err.details = error
+    throw err
   }
 
   return response.json() as Promise<T>

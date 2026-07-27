@@ -4,11 +4,32 @@ import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
 import { env } from '../../config/env.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
+import { decryptAccountPublic } from '../../utils/pii.js'
 import { hashToken, randomToken } from '../../utils/crypto.js'
+import { hashPassword } from '../../utils/password.js'
 import { getAuthedGoogleClient, syncGoogleAppFolderFiles, syncGoogleQuota } from '../google/google.service.js'
 import { deleteS3Object, syncS3Quota } from '../s3/s3.service.js'
 import { streamProviderFile } from './stream-file.js'
 import { logAudit } from '../../utils/audit.js'
+
+const shareCreateSchema = z.object({
+  expiresIn: z.enum(['1h', '24h', '7d', '30d', 'never']).default('7d'),
+  allowDownload: z.boolean().default(true),
+  password: z.string().min(4).max(128).optional().nullable(),
+  rotate: z.boolean().default(false),
+})
+
+function expiresAtFromOption(expiresIn: '1h' | '24h' | '7d' | '30d' | 'never'): Date | null {
+  if (expiresIn === 'never') return null
+  const now = Date.now()
+  const map: Record<string, number> = {
+    '1h': 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+  }
+  return new Date(now + map[expiresIn])
+}
 
 export const fileRouter = Router()
 
@@ -52,6 +73,7 @@ fileRouter.get('/recovery', async (req: AuthRequest, res, next) => {
       files: files.map((file) => ({
         ...file,
         sizeBytes: file.sizeBytes.toString(),
+        connectedAccount: file.connectedAccount ? decryptAccountPublic(file.connectedAccount) : null
       }))
     })
   } catch (error) {
@@ -78,7 +100,13 @@ fileRouter.get('/', async (req: AuthRequest, res, next) => {
       },
       orderBy: { createdAt: 'desc' }
     })
-    return res.json({ files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString() })) })
+    return res.json({
+      files: files.map((file) => ({
+        ...file,
+        sizeBytes: file.sizeBytes.toString(),
+        connectedAccount: file.connectedAccount ? decryptAccountPublic(file.connectedAccount) : null
+      }))
+    })
   } catch (error) {
     return next(error)
   }
@@ -158,19 +186,59 @@ fileRouter.delete('/batch', async (req: AuthRequest, res, next) => {
 fileRouter.get('/shared-links', async (req: AuthRequest, res, next) => {
   try {
     const shares = await prisma.fileShare.findMany({
-      where: { userId: req.user!.id, enabled: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+      where: { userId: req.user!.id, enabled: true },
       include: { file: { include: { connectedAccount: { select: { email: true, provider: true } }, folder: { select: { id: true, name: true } } } } },
       orderBy: { createdAt: 'desc' },
     })
     return res.json({
-      shares: shares.filter((share) => share.file.status === 'active').map((share) => ({
-        id: share.id,
-        url: share.token ? `${env.FRONTEND_URL}/public/files/${share.token}` : null,
-        createdAt: share.createdAt.toISOString(),
-        expiresAt: share.expiresAt?.toISOString() ?? null,
-        file: { ...share.file, sizeBytes: share.file.sizeBytes.toString() },
-      })),
+      shares: shares.filter((share) => share.file.status === 'active').map((share) => {
+        const expired = Boolean(share.expiresAt && share.expiresAt.getTime() <= Date.now())
+        return {
+          id: share.id,
+          // Prefer reconstructed URL from token when still available (legacy rows keep plaintext token).
+          // New rows may null token after create response; owner still manages via id.
+          url: share.token ? `${env.FRONTEND_URL}/share/${share.token}` : null,
+          createdAt: share.createdAt.toISOString(),
+          expiresAt: share.expiresAt?.toISOString() ?? null,
+          allowDownload: share.allowDownload,
+          hasPassword: Boolean(share.passwordHash),
+          viewCount: share.viewCount,
+          downloadCount: share.downloadCount,
+          status: expired ? 'expired' : 'active',
+          file: {
+            id: share.file.id,
+            name: share.file.name,
+            mimeType: share.file.mimeType,
+            sizeBytes: share.file.sizeBytes.toString(),
+            createdAt: share.file.createdAt,
+            folder: share.file.folder,
+            connectedAccount: share.file.connectedAccount ? decryptAccountPublic(share.file.connectedAccount) : null,
+          },
+        }
+      }),
     })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+fileRouter.delete('/shared-links/:shareId', async (req: AuthRequest, res, next) => {
+  try {
+    const shareId = String(req.params.shareId)
+    const result = await prisma.fileShare.updateMany({
+      where: { id: shareId, userId: req.user!.id, enabled: true },
+      data: { enabled: false },
+    })
+    if (result.count === 0) {
+      return res.status(404).json({ code: 'SHARE_NOT_FOUND', message: 'Share link not found.' })
+    }
+    await logAudit({
+      userId: req.user!.id,
+      action: 'share.revoke',
+      entityType: 'file_share',
+      entityId: shareId,
+    })
+    return res.json({ status: 'ok' })
   } catch (error) {
     return next(error)
   }
@@ -210,7 +278,13 @@ fileRouter.get('/:id', async (req: AuthRequest, res, next) => {
     if (file.userId !== req.user!.id) {
       return res.status(403).json({ code: 'FORBIDDEN', message: 'Access denied.' })
     }
-    return res.json({ file: { ...file, sizeBytes: file.sizeBytes.toString() } })
+    return res.json({
+      file: {
+        ...file,
+        sizeBytes: file.sizeBytes.toString(),
+        connectedAccount: file.connectedAccount ? decryptAccountPublic(file.connectedAccount) : null
+      }
+    })
   } catch (error) {
     return next(error)
   }
@@ -254,7 +328,13 @@ fileRouter.patch('/:id', async (req: AuthRequest, res, next) => {
         metadata: { oldFolderId: file.folderId, newFolderId: body.folderId }
       })
     }
-    return res.json({ file: { ...updated, sizeBytes: updated.sizeBytes.toString() } })
+    return res.json({
+      file: {
+        ...updated,
+        sizeBytes: updated.sizeBytes.toString(),
+        connectedAccount: updated.connectedAccount ? decryptAccountPublic(updated.connectedAccount) : null
+      }
+    })
   } catch (error) {
     return next(error)
   }
@@ -263,6 +343,7 @@ fileRouter.patch('/:id', async (req: AuthRequest, res, next) => {
 fileRouter.post('/:id/share', async (req: AuthRequest, res, next) => {
   try {
     const fileId = String(req.params.id)
+    const body = shareCreateSchema.parse(req.body ?? {})
     const file = await prisma.file.findFirst({ where: { id: fileId, status: 'active', connectedAccount: { status: 'connected' } } })
     if (!file) {
       return res.status(404).json({ code: 'FILE_NOT_FOUND', message: 'File not found.' })
@@ -270,15 +351,79 @@ fileRouter.post('/:id/share', async (req: AuthRequest, res, next) => {
     if (file.userId !== req.user!.id) {
       return res.status(403).json({ code: 'FORBIDDEN', message: 'Access denied.' })
     }
-    if (file.status !== 'active') {
-      return res.status(400).json({ code: 'FILE_INACTIVE', message: 'File is not active.' })
+
+    const existingShare = await prisma.fileShare.findFirst({
+      where: {
+        fileId: file.id,
+        userId: req.user!.id,
+        enabled: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    // Reuse existing link only when caller didn't ask to rotate and no new options were customized
+    // beyond defaults... Actually always honor new options: if options provided / rotate, recreate.
+    const wantsFresh =
+      body.rotate ||
+      Boolean(body.password) ||
+      body.expiresIn !== '7d' ||
+      body.allowDownload !== true ||
+      !existingShare
+
+    if (existingShare && !wantsFresh && existingShare.token) {
+      return res.json({
+        url: `${env.FRONTEND_URL}/share/${existingShare.token}`,
+        shareId: existingShare.id,
+        expiresAt: existingShare.expiresAt?.toISOString() ?? null,
+        allowDownload: existingShare.allowDownload,
+        hasPassword: Boolean(existingShare.passwordHash),
+        reused: true,
+      })
     }
-    const existingShare = await prisma.fileShare.findFirst({ where: { fileId: file.id, userId: req.user!.id, enabled: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { createdAt: 'desc' } })
-    if (existingShare?.token) return res.json({ url: `${env.FRONTEND_URL}/public/files/${existingShare.token}`, shareId: existingShare.id })
-    if (existingShare) await prisma.fileShare.update({ where: { id: existingShare.id }, data: { enabled: false } })
+
+    if (existingShare) {
+      await prisma.fileShare.update({ where: { id: existingShare.id }, data: { enabled: false } })
+    }
+
     const token = randomToken(32)
-    const share = await prisma.fileShare.create({ data: { fileId: file.id, userId: req.user!.id, token, tokenHash: hashToken(token) } })
-    return res.status(201).json({ url: `${env.FRONTEND_URL}/public/files/${token}`, shareId: share.id })
+    const expiresAt = expiresAtFromOption(body.expiresIn)
+    const passwordHash = body.password ? await hashPassword(body.password) : null
+
+    // Keep plaintext token for owner list/copy (legacy UX). Lookup always works via tokenHash.
+    const share = await prisma.fileShare.create({
+      data: {
+        fileId: file.id,
+        userId: req.user!.id,
+        token,
+        tokenHash: hashToken(token),
+        expiresAt,
+        allowDownload: body.allowDownload,
+        passwordHash,
+      },
+    })
+
+    await logAudit({
+      userId: req.user!.id,
+      action: 'share.create',
+      entityType: 'file_share',
+      entityId: share.id,
+      metadata: {
+        fileId: file.id,
+        expiresIn: body.expiresIn,
+        allowDownload: body.allowDownload,
+        hasPassword: Boolean(passwordHash),
+      },
+    })
+
+    return res.status(201).json({
+      url: `${env.FRONTEND_URL}/share/${token}`,
+      shareId: share.id,
+      expiresAt: share.expiresAt?.toISOString() ?? null,
+      allowDownload: share.allowDownload,
+      hasPassword: Boolean(share.passwordHash),
+      reused: false,
+    })
   } catch (error) {
     return next(error)
   }
@@ -287,14 +432,17 @@ fileRouter.post('/:id/share', async (req: AuthRequest, res, next) => {
 fileRouter.delete('/:id/share', async (req: AuthRequest, res, next) => {
   try {
     const fileId = String(req.params.id)
-    const file = await prisma.file.findFirst({ where: { id: fileId, status: 'active', connectedAccount: { status: 'connected' } } })
+    const file = await prisma.file.findFirst({ where: { id: fileId, userId: req.user!.id } })
     if (!file) {
       return res.status(404).json({ code: 'FILE_NOT_FOUND', message: 'File not found.' })
     }
-    if (file.userId !== req.user!.id) {
-      return res.status(403).json({ code: 'FORBIDDEN', message: 'Access denied.' })
-    }
     await prisma.fileShare.updateMany({ where: { fileId: file.id, userId: req.user!.id, enabled: true }, data: { enabled: false } })
+    await logAudit({
+      userId: req.user!.id,
+      action: 'share.revoke_file',
+      entityType: 'file',
+      entityId: file.id,
+    })
     return res.json({ status: 'ok' })
   } catch (error) {
     return next(error)

@@ -11,18 +11,23 @@ export function GoogleConnectedPage() {
 
   useEffect(() => {
     window.opener?.postMessage({ type: 'GOOGLE_CONNECTED', status }, window.location.origin)
+    localStorage.setItem('casanest:google-connected', JSON.stringify({ status, timestamp: Date.now() }))
+    
     const timer = window.setTimeout(() => {
-      if (window.opener) window.close()
-      else navigate('/settings')
+      if (window.opener || window.name === 'google-drive-connect') {
+        window.close()
+      } else {
+        navigate('/settings')
+      }
     }, 1500)
     return () => window.clearTimeout(timer)
   }, [navigate, status])
 
   let title = 'Connection Failed'
-  let description = 'Close this window and try again.'
+  let description = 'Please close this window and try again.'
   if (ok) {
     title = 'Google Drive Connected'
-    description = 'This window will close automatically.'
+    description = 'Successfully connected! You can close this window now.'
   } else if (status === 'limit_reached') {
     title = 'Limit Reached'
     description = 'You can connect up to 4 Google Drive accounts only.'

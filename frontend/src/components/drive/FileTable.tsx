@@ -3,13 +3,14 @@ import type { MouseEvent } from 'react'
 import { AvatarStack } from '@/components/drive/AvatarStack'
 import { FileIcon } from '@/components/drive/FileIcon'
 import type { FileItem } from '@/data/drive-data'
+import { cn } from '@/lib/utils'
 
 export function FileTable({ files, mode = 'default', selectedFileIds = new Set<string>(), allSelected = false, onFileContextMenu, onToggleFile, onToggleAll }: { files: FileItem[]; mode?: 'default' | 'shared' | 'recent' | 'starred' | 'archived'; selectedFileIds?: Set<string>; allSelected?: boolean; onFileContextMenu?: (event: MouseEvent<HTMLElement>, file: FileItem) => void; onToggleFile?: (file: FileItem) => void; onToggleAll?: () => void }) {
   return (
     <div className="mt-5">
       <div className="grid gap-3 sm:hidden">
         {onToggleAll ? (
-          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold shadow-sm">
+          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
             <span>Select all files</span>
             <input type="checkbox" className="h-5 w-5 accent-blue-600" checked={allSelected} onChange={onToggleAll} />
           </label>
@@ -18,19 +19,29 @@ export function FileTable({ files, mode = 'default', selectedFileIds = new Set<s
           const selected = selectedFileIds.has(file.id ?? '')
           const meta = mode === 'archived' ? file.location : mode === 'recent' ? file.openedDate : mode === 'starred' ? file.starredDate : file.date
           return (
-            <article key={file.id ?? file.name} onClick={() => onToggleFile?.(file)} onContextMenu={(event) => onFileContextMenu?.(event, file)} className={selected ? 'overflow-hidden rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm' : 'overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'}>
+            <article
+              key={file.id ?? file.name}
+              onClick={() => onToggleFile?.(file)}
+              onContextMenu={(event) => onFileContextMenu?.(event, file)}
+              className={cn(
+                'overflow-hidden rounded-2xl border p-4 shadow-sm',
+                selected
+                  ? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40'
+                  : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900',
+              )}
+            >
               <div className="flex items-start gap-3">
                 {onToggleFile ? <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-blue-600" checked={selected} onChange={() => onToggleFile?.(file)} onClick={(event) => event.stopPropagation()} /> : null}
                 <div className="mt-0.5 shrink-0">{mode === 'starred' ? <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" /> : <FileIcon kind={file.kind} />}</div>
                 <div className="min-w-0 flex-1 overflow-hidden">
-                  <h3 className="line-clamp-2 break-all text-sm font-extrabold leading-snug text-slate-950" title={file.name}>{file.name}</h3>
-                  <p className="mt-1 truncate text-xs text-slate-500">{meta}</p>
-                  <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1">{file.size}</span>
-                    <span className="min-w-0 max-w-full truncate rounded-full bg-slate-100 px-2.5 py-1">{mode === 'shared' ? file.owner : file.access}</span>
+                  <h3 className="line-clamp-2 break-all text-sm font-extrabold leading-snug text-slate-950 dark:text-slate-50" title={file.name}>{file.name}</h3>
+                  <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{meta}</p>
+                  <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800 dark:text-slate-200">{file.size}</span>
+                    <span className="min-w-0 max-w-full truncate rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800 dark:text-slate-200">{mode === 'shared' ? file.owner : file.access}</span>
                   </div>
                 </div>
-                <button className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100" onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-5 w-5" /></button>
+                <button className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-5 w-5" /></button>
               </div>
             </article>
           )
@@ -39,7 +50,7 @@ export function FileTable({ files, mode = 'default', selectedFileIds = new Set<s
       <div className="hidden overflow-x-auto sm:block">
       <table className="w-full min-w-[760px] border-collapse text-left text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-slate-950">
+          <tr className="border-b border-slate-200 text-slate-950 dark:border-slate-700 dark:text-slate-50">
             <th className="w-10 py-4"><input type="checkbox" className="h-4 w-4 accent-blue-600" checked={allSelected} onChange={onToggleAll} /></th>
             <th className="py-4 font-extrabold">Name</th>
             {mode === 'shared' ? <th className="py-4 font-extrabold">Owner</th> : null}
@@ -54,22 +65,32 @@ export function FileTable({ files, mode = 'default', selectedFileIds = new Set<s
         </thead>
         <tbody>
           {files.map((file) => (
-            <tr key={file.id ?? file.name} onContextMenu={(event) => onFileContextMenu?.(event, file)} onClick={() => onToggleFile?.(file)} className={selectedFileIds.has(file.id ?? '') ? 'border-b border-blue-100 bg-blue-50 transition hover:bg-blue-50' : 'border-b border-slate-200 transition hover:bg-slate-50'}>
+            <tr
+              key={file.id ?? file.name}
+              onContextMenu={(event) => onFileContextMenu?.(event, file)}
+              onClick={() => onToggleFile?.(file)}
+              className={cn(
+                'border-b transition',
+                selectedFileIds.has(file.id ?? '')
+                  ? 'border-blue-100 bg-blue-50 hover:bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40 dark:hover:bg-blue-950/50'
+                  : 'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/70',
+              )}
+            >
               <td className="py-4"><input type="checkbox" className="h-4 w-4 accent-blue-600" checked={selectedFileIds.has(file.id ?? '')} onChange={() => onToggleFile?.(file)} onClick={(event) => event.stopPropagation()} /></td>
-              <td className="py-4 font-semibold">
+              <td className="py-4 font-semibold text-slate-900 dark:text-slate-100">
                 <span className="flex min-w-0 items-center gap-3">
                   {mode === 'starred' ? <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" /> : <FileIcon kind={file.kind} />}
                   <span className="truncate">{file.name}</span>
                 </span>
               </td>
-              {mode === 'shared' ? <td className="py-4 text-slate-500">{file.owner}</td> : null}
-              {mode === 'recent' ? <td className="py-4 text-slate-500">{file.openedDate}</td> : null}
-              {mode === 'starred' ? <td className="py-4 text-slate-500">{file.starredDate}</td> : null}
-              {mode === 'archived' ? <td className="py-4 text-slate-500">{file.archivedDate}</td> : null}
-              <td className="py-4 text-slate-500">{mode === 'archived' ? file.location : file.date}</td>
-              <td className="py-4 text-slate-500">{file.size}</td>
-              <td className="py-4 text-slate-500"><span className="flex items-center gap-3"><AvatarStack count={file.shared} />{file.access}</span></td>
-              <td className="py-4 text-right"><button className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-5 w-5" /></button></td>
+              {mode === 'shared' ? <td className="py-4 text-slate-500 dark:text-slate-400">{file.owner}</td> : null}
+              {mode === 'recent' ? <td className="py-4 text-slate-500 dark:text-slate-400">{file.openedDate}</td> : null}
+              {mode === 'starred' ? <td className="py-4 text-slate-500 dark:text-slate-400">{file.starredDate}</td> : null}
+              {mode === 'archived' ? <td className="py-4 text-slate-500 dark:text-slate-400">{file.archivedDate}</td> : null}
+              <td className="py-4 text-slate-500 dark:text-slate-400">{mode === 'archived' ? file.location : file.date}</td>
+              <td className="py-4 text-slate-500 dark:text-slate-400">{file.size}</td>
+              <td className="py-4 text-slate-500 dark:text-slate-400"><span className="flex items-center gap-3"><AvatarStack count={file.shared} />{file.access}</span></td>
+              <td className="py-4 text-right"><button className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-5 w-5" /></button></td>
             </tr>
           ))}
         </tbody>

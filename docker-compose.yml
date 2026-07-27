@@ -1,16 +1,18 @@
 services:
-  mysql:
-    image: mysql:8.4
+  db:
+    image: postgres:15-alpine
+    container_name: casanest-db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-9drive}
+      POSTGRES_USER: ${POSTGRES_USER:-casanest_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-casanest_password}
+      POSTGRES_DB: ${POSTGRES_DB:-casanest}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:5434:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-casanest_user} -d $${POSTGRES_DB:-casanest}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -18,36 +20,55 @@ services:
   backend:
     build:
       context: ./backend
+    container_name: casanest-backend
     restart: unless-stopped
     depends_on:
-      mysql:
+      db:
         condition: service_healthy
     environment:
-      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/${MYSQL_DATABASE:-9drive}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-casanest_user}:${POSTGRES_PASSWORD:-casanest_password}@db:5432/${POSTGRES_DB:-casanest}?schema=public
       APP_PORT: 4000
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-this-jwt-secret-at-least-32-chars}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-change-this-encryption-key-32bytes!}
-      ACCESS_TOKEN_TTL_SECONDS: 900
-      REFRESH_TOKEN_TTL_DAYS: 30
-      MAX_UPLOAD_BYTES: 5368709120
+      FRONTEND_URL: ${FRONTEND_URL:-https://casanest.my.id}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-ini-secret-panjang-minimal-32-karakter}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-ini-encryption-key-panjang-32-karakter}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      # Remember-me / save-login refresh cookie lifetime (days)
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      # Production HTTPS must keep COOKIE_SECURE=true so browsers store auth cookies.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-5368709120}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:4000/connected-accounts/google/callback}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://casanest.my.id/connected-accounts/google/callback}
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
+        VITE_API_URL: ${VITE_API_URL:-https://casanest.my.id}
         VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:-}
+    container_name: casanest-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
-  mysql_data:
+  postgres_data:

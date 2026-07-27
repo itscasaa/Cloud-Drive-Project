@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BrandLogo } from '@/components/drive/BrandLogo'
@@ -12,19 +13,67 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      return localStorage.getItem('casanest.remember') === '1'
+    } catch {
+      return false
+    }
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [captchaText, setCaptchaText] = useState('')
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaSvg, setCaptchaSvg] = useState('')
+
+  const loadCaptcha = async () => {
+    try {
+      const res = await apiFetch<{ svg: string; captchaToken: string }>('/auth/captcha', { skipAuth: true })
+      setCaptchaSvg(res.svg)
+      setCaptchaToken(res.captchaToken)
+      setCaptchaText('')
+    } catch (err) {
+      console.error('Failed to load captcha:', err)
+    }
+  }
+
+  useEffect(() => {
+    // Prefill remembered email only (never password).
+    try {
+      const savedEmail = localStorage.getItem('casanest.remember_email')
+      if (savedEmail) setEmail(savedEmail)
+    } catch {
+      // ignore storage errors
+    }
+    loadCaptcha()
+  }, [])
+
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      setError('Hanya email dengan domain @gmail.com yang diijinkan.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
-      const data = await apiFetch<AuthResponse>('/auth/login', { method: 'POST', skipAuth: true, body: JSON.stringify({ email, password }) })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      const data = await apiFetch<AuthResponse>('/auth/login', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ email, password, captchaText, captchaToken, rememberMe }),
+      })
+      setAuthSession(data.accessToken, data.refreshToken, data.user, { rememberMe })
+      try {
+        if (rememberMe) localStorage.setItem('casanest.remember_email', email.trim().toLowerCase())
+        else localStorage.removeItem('casanest.remember_email')
+      } catch {
+        // ignore storage errors
+      }
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
+      loadCaptcha()
     } finally {
       setLoading(false)
     }
@@ -34,8 +83,12 @@ export function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await apiFetch<AuthResponse>('/auth/demo-login', { method: 'POST', skipAuth: true })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      const data = await apiFetch<AuthResponse>('/auth/demo-login', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ rememberMe: false }),
+      })
+      setAuthSession(data.accessToken, data.refreshToken, data.user, { rememberMe: false })
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demo login failed')
@@ -45,17 +98,27 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen w-full flex-col md:flex-row bg-slate-50">
+    <main className="flex min-h-screen w-full flex-col md:flex-row bg-slate-50 overflow-hidden">
       {/* Left Brand Panel */}
-      <div className="w-full md:w-[55%] flex flex-col justify-between p-6 md:p-16 text-white relative overflow-hidden bg-gradient-to-br from-[#0B122A] via-[#1D4ED8] to-[#38BDF8]">
+      <div className="auth-brand-panel animate-login-brand w-full md:w-[55%] flex flex-col justify-between p-6 md:p-16 text-white relative overflow-hidden bg-gradient-to-br from-[#0B122A] via-[#1D4ED8] to-[#38BDF8]">
         {/* Decorative ambient glow */}
         <div className="absolute -left-20 -top-20 w-80 h-80 rounded-full bg-blue-400/10 blur-[100px] pointer-events-none" />
         <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-sky-400/10 blur-[100px] pointer-events-none" />
         
-        {/* Logo Section */}
-        <div className="flex items-center gap-3 relative z-10">
-          <BrandLogo className="h-10 w-10 md:h-12 md:w-12 shadow-xl shadow-blue-950/40" logoClassName="h-16 w-16 md:h-20 md:w-20" />
-          <span className="text-xl md:text-2xl font-extrabold tracking-tight">CasaNest</span>
+        {/* Logo Section & Back Button */}
+        <div className="flex items-center justify-between w-full relative z-10">
+          <div className="flex items-center gap-3">
+            <BrandLogo transparentBg className="h-10 w-10 md:h-12 md:w-12" logoClassName="h-16 w-16 md:h-20 md:w-20" />
+            <span className="text-xl md:text-2xl font-extrabold tracking-tight">CasaNest</span>
+          </div>
+          
+          <Link 
+            to="/" 
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 border border-white/15 hover:border-white/30 rounded-xl transition-all shadow-sm active:scale-95"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Nest
+          </Link>
         </div>
 
         {/* Content Section */}
@@ -76,14 +139,14 @@ export function LoginPage() {
       </div>
 
       {/* Right Form Panel */}
-      <div className="w-full md:w-[45%] flex items-center justify-center p-6 sm:p-8 md:p-16 bg-white border-l border-slate-100">
+      <div className="auth-form-panel animate-login-form w-full md:w-[45%] flex items-center justify-center p-6 sm:p-8 md:p-16 bg-white border-l border-slate-100">
         <div className="w-full max-w-md space-y-8">
-          <div className="space-y-2">
+          <div className="space-y-2 animate-stagger-1">
             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Welcome Back</h2>
             <p className="text-sm text-slate-500 font-medium">Login to your CasaNest account.</p>
           </div>
 
-          <form onSubmit={submit} className="space-y-6">
+          <form onSubmit={submit} className="space-y-6 animate-stagger-2">
             <div className="space-y-4">
               <label className="grid gap-2 text-sm font-semibold text-slate-700">
                 Email
@@ -107,6 +170,52 @@ export function LoginPage() {
                   placeholder="••••••••"
                   className="h-11 rounded-xl"
                 />
+              </label>
+
+              {/* Captcha Section */}
+              <div className="space-y-2.5">
+                <span className="text-sm font-semibold text-slate-700 block">Security Check</span>
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="border border-slate-200 rounded-xl overflow-hidden cursor-pointer bg-[#EAF5FF] flex items-center justify-center shrink-0 w-[150px] h-[50px] select-none"
+                    dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    onClick={loadCaptcha}
+                    title="Click to refresh captcha"
+                  />
+                  <button 
+                    type="button" 
+                    onClick={loadCaptcha} 
+                    className="p-3 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/80 rounded-xl border border-blue-100 transition shadow-sm active:scale-95 cursor-pointer h-[50px] px-4"
+                    title="Refresh Captcha"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                
+                <Input 
+                  type="text" 
+                  value={captchaText} 
+                  onChange={(e) => setCaptchaText(e.target.value)} 
+                  required 
+                  placeholder="Enter verification code"
+                  className="h-11 rounded-xl"
+                  autoComplete="off"
+                />
+              </div>
+
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">Remember me / Simpan login</span>
+                  <span className="mt-0.5 block text-xs font-medium text-slate-500 leading-relaxed">
+                    Keep this device signed in for up to 30 days. Do not use on shared computers.
+                  </span>
+                </span>
               </label>
             </div>
 
@@ -136,14 +245,14 @@ export function LoginPage() {
             </div>
           </form>
 
-          <p className="text-center text-sm font-medium text-slate-500">
+          <p className="text-center text-sm font-medium text-slate-500 animate-stagger-3">
             No account?{' '}
-            <Link className="font-bold text-blue-600 hover:underline" to="/register">
+            <Link className="font-bold text-blue-600 hover:underline" to="/register" viewTransition>
               Register
             </Link>
           </p>
           
-          <div className="flex justify-center gap-3 text-[11px] font-bold text-slate-400 border-t border-slate-100 pt-6">
+          <div className="flex justify-center gap-3 text-[11px] font-bold text-slate-400 border-t border-slate-100 pt-6 animate-stagger-4">
             <Link to="/privacy" className="hover:text-slate-600 transition">Privacy Policy</Link>
             <span>•</span>
             <Link to="/terms" className="hover:text-slate-600 transition">Terms of Service</Link>

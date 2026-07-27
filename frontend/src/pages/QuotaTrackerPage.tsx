@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, Cloud, Database, Link2, RefreshCw } from 'lucide-react'
+import { CheckCircle, Database, Link2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { GoogleDriveIcon } from '@/components/drive/GoogleDriveIcon'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -16,9 +17,9 @@ function providerLabel(provider: string) {
   return 'Google Drive'
 }
 
-function ProviderIcon({ provider }: { provider: string }) {
-  const Icon = provider === 's3' ? Database : Cloud
-  return <Icon className="h-6 w-6" />
+function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
+  if (provider === 's3') return <Database className={cn('h-6 w-6', className)} />
+  return <GoogleDriveIcon className={cn('h-6 w-6', className)} />
 }
 
 function storageLimitLabel(account: ConnectedAccount) {
@@ -83,9 +84,7 @@ export function QuotaTrackerPage() {
   }, [autoRefresh])
 
   useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
-      const status = event.data.status
+    function handleStatus(status: string) {
       if (status === 'success') {
         setMessage('Google Drive connected.')
       } else if (status === 'already_linked') {
@@ -99,8 +98,30 @@ export function QuotaTrackerPage() {
       }
       load().catch(() => undefined)
     }
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
+      handleStatus(event.data.status)
+    }
+
+    function onStorage(event: StorageEvent) {
+      if (event.key === 'casanest:google-connected' && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue) as { status: string; timestamp: number }
+          if (Date.now() - parsed.timestamp < 10000) {
+            handleStatus(parsed.status)
+            localStorage.removeItem('casanest:google-connected')
+          }
+        } catch {}
+      }
+    }
+
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   async function connectDrive() {
@@ -266,42 +287,42 @@ export function QuotaTrackerPage() {
       </Card>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-2">
-        {accounts.length === 0 ? (
-          <Card className="col-span-full p-8 text-center border border-slate-100/80 shadow-sm">
-            <Cloud className="mx-auto h-10 w-10 text-blue-600" />
-            <h2 className="mt-4 text-xl font-extrabold text-slate-900">No connected drives</h2>
-            <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto">
-              Connect Google Drive or S3-compatible storage to start pooling your storage nest.
-            </p>
-            <Button className="mt-5" onClick={connectDrive}>
-              <Link2 className="h-4 w-4 mr-1.5" />
-              Connect Drive
-            </Button>
-          </Card>
-        ) : (
-          accounts.map((account) => {
-            const percent = pct(account)
-            const color = statusColor(percent)
-            return (
-              <Card key={account.id} className="overflow-hidden p-5 border border-slate-100/80 shadow-sm hover:shadow-md transition">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-200">
-                      <ProviderIcon provider={account.provider} />
-                    </div>
-                    <div>
-                      <h2 className="font-extrabold text-slate-900">{providerLabel(account.provider)}</h2>
-                      <p className="text-xs text-slate-500 font-semibold">{account.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-9 w-9 bg-white border-slate-200"
-                      onClick={() => sync(account.id)}
-                      disabled={syncingAccountId === account.id}
-                    >
+              {accounts.length === 0 ? (
+                <Card className="col-span-full p-8 text-center border border-slate-100/80 shadow-sm">
+                  <GoogleDriveIcon className="mx-auto h-10 w-10" />
+                  <h2 className="mt-4 text-xl font-extrabold text-slate-900">No connected drives</h2>
+                  <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto">
+                    Connect Google Drive or S3-compatible storage to start pooling your storage nest.
+                  </p>
+                  <Button className="mt-5" onClick={connectDrive}>
+                    <Link2 className="h-4 w-4 mr-1.5" />
+                    Connect Drive
+                  </Button>
+                </Card>
+              ) : (
+                accounts.map((account) => {
+                  const percent = pct(account)
+                  const color = statusColor(percent)
+                  return (
+                    <Card key={account.id} className="overflow-hidden p-5 border border-slate-100/80 shadow-sm hover:shadow-md transition">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-blue-600 shadow-md border border-slate-100">
+                            <ProviderIcon provider={account.provider} />
+                          </div>
+                          <div>
+                            <h2 className="font-extrabold text-slate-900">{providerLabel(account.provider)}</h2>
+                            <p className="text-xs text-slate-500 font-semibold">{account.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 bg-white border-slate-200"
+                            onClick={() => sync(account.id)}
+                            disabled={syncingAccountId === account.id}
+                          >
                       <RefreshCw className={cn('h-4.5 w-4.5', syncingAccountId === account.id && 'animate-spin')} />
                     </Button>
                   </div>

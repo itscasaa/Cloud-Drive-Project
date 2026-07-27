@@ -10,6 +10,7 @@ import { createOAuthClient, syncGoogleQuota, validateGoogleConfig } from '../goo
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
 import { createRateLimiter } from '../../middleware/rate-limit.middleware.js'
 import { logAudit } from '../../utils/audit.js'
+import { encryptAccountIdentity, decryptAccountPublic } from '../../utils/pii.js'
 
 export const connectedAccountRouter = Router()
 
@@ -76,7 +77,8 @@ connectedAccountRouter.get('/', requireAuth, async (req: AuthRequest, res, next)
       : accounts
 
     return res.json({
-      accounts: syncedAccounts.map(({ accessTokenEncrypted: _a, refreshTokenEncrypted: _r, storageAccount, ...account }) => {
+      accounts: syncedAccounts.map((accountRow) => {
+        const { accessTokenEncrypted: _a, refreshTokenEncrypted: _r, storageAccount, ...account } = decryptAccountPublic(accountRow)
         const scopesArray = Array.isArray(account.scopes) ? account.scopes : []
         const reconnectRequired = account.provider === 'google_drive' && !scopesArray.includes('https://www.googleapis.com/auth/drive.file')
         return {
@@ -138,13 +140,15 @@ connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, ne
     if (existingAccount && existingAccount.userId !== req.user!.id) {
       return res.status(403).json({ code: 'FORBIDDEN', message: 'This S3 bucket is already connected by another user.' })
     }
+    const identity = encryptAccountIdentity({ email: `${body.bucket} (S3)`, displayName: body.name })
     const account = existingAccount
       ? await prisma.connectedAccount.update({
         where: { id: existingAccount.id },
         data: {
           providerConfigId: providerConfig.id,
-          email: `${body.bucket} (S3)`,
-          displayName: body.name,
+          email: identity.email,
+          emailHash: identity.emailHash,
+          displayName: identity.displayName,
           accessTokenEncrypted: encryptText('s3'),
           refreshTokenEncrypted: encryptText(randomToken()),
           tokenExpiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
@@ -159,8 +163,9 @@ connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, ne
         providerConfigId: providerConfig.id,
         provider: 's3',
         providerAccountId,
-        email: `${body.bucket} (S3)`,
-        displayName: body.name,
+        email: identity.email,
+        emailHash: identity.emailHash,
+        displayName: identity.displayName,
         accessTokenEncrypted: encryptText('s3'),
         refreshTokenEncrypted: encryptText(randomToken()),
         tokenExpiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
@@ -205,7 +210,7 @@ connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, ne
       const quota = await syncS3Quota(account.id)
       return res.status(201).json({
         account: {
-          ...account,
+          ...decryptAccountPublic(account),
           storageAccount: { ...quota, totalBytes: quota.totalBytes?.toString() ?? null, usedBytes: quota.usedBytes.toString(), availableBytes: quota.availableBytes?.toString() ?? null, trashBytes: quota.trashBytes?.toString() ?? null },
         },
       })
@@ -265,11 +270,18 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
     if (!providerAccountId || !email) return res.status(400).json({ code: 'GOOGLE_PROFILE_FAILED', message: 'Google profile missing id or email.' })
 
     if (oauthState.flow === 'login') {
+      if (!email.toLowerCase().endsWith('@gmail.com')) {
+        return res.redirect(`${env.FRONTEND_URL}/google-auth?status=restricted_domain`)
+      }
       const name = profile.data.name || email.split('@')[0] || 'Google User'
+      const { email: encEmail, emailHash: encEmailHash, name: encName } = (() => {
+        const u = require('../../utils/pii.js').encryptUserFields({ name, email })
+        return { email: u.email, emailHash: u.emailHash, name: u.name }
+      })()
       const user = await prisma.user.upsert({
-        where: { email },
-        create: { email, name, passwordHash: await hashPassword(randomToken(32)) },
-        update: { name },
+        where: { emailHash: encEmailHash },
+        create: { email: encEmail, emailHash: encEmailHash, name: encName, passwordHash: await hashPassword(randomToken(32)) },
+        update: { name: encName },
       })
       const existingGlobal = await prisma.connectedAccount.findFirst({
         where: { provider: 'google_drive', providerAccountId }
@@ -282,6 +294,7 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
       const existingAccount = await prisma.connectedAccount.findUnique({ where: { provider_providerAccountId: { provider: 'google_drive', providerAccountId } } })
       const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
       if (!refreshTokenEncrypted) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+      const identity = encryptAccountIdentity({ email, displayName: profile.data.name, avatarUrl: profile.data.picture })
       const account = await prisma.connectedAccount.upsert({
         where: { provider_providerAccountId: { provider: 'google_drive', providerAccountId } },
         create: {
@@ -289,9 +302,10 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
           providerConfigId: oauthState.providerConfigId,
           provider: 'google_drive',
           providerAccountId,
-          email,
-          displayName: profile.data.name,
-          avatarUrl: profile.data.picture,
+          email: identity.email,
+          emailHash: identity.emailHash,
+          displayName: identity.displayName,
+          avatarUrl: identity.avatarUrl,
           accessTokenEncrypted: encryptText(tokens.access_token),
           refreshTokenEncrypted,
           tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
@@ -300,9 +314,10 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
         },
         update: {
           providerConfigId: oauthState.providerConfigId,
-          email,
-          displayName: profile.data.name,
-          avatarUrl: profile.data.picture,
+          email: identity.email,
+          emailHash: identity.emailHash,
+          displayName: identity.displayName,
+          avatarUrl: identity.avatarUrl,
           accessTokenEncrypted: encryptText(tokens.access_token),
           refreshTokenEncrypted,
           tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
@@ -331,7 +346,7 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
         action: isReconnect ? 'reconnect_drive' : 'connect_drive',
         entityType: 'connected_account',
         entityId: account.id,
-        metadata: { email: account.email }
+        metadata: { email }
       })
 
       const handoffToken = randomToken()
@@ -371,6 +386,7 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
     const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
     if (!refreshTokenEncrypted) return res.status(400).json({ code: 'GOOGLE_OAUTH_FAILED', message: 'Google did not return required tokens.' })
 
+    const identity = encryptAccountIdentity({ email, displayName: profile.data.name, avatarUrl: profile.data.picture })
     const account = await prisma.connectedAccount.upsert({
       where: { provider_providerAccountId: { provider: 'google_drive', providerAccountId } },
       create: {
@@ -378,9 +394,10 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
         providerConfigId: oauthState.providerConfigId,
         provider: 'google_drive',
         providerAccountId,
-        email,
-        displayName: profile.data.name,
-        avatarUrl: profile.data.picture,
+        email: identity.email,
+        emailHash: identity.emailHash,
+        displayName: identity.displayName,
+        avatarUrl: identity.avatarUrl,
         accessTokenEncrypted: encryptText(tokens.access_token),
         refreshTokenEncrypted,
         tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
@@ -389,9 +406,10 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
       },
       update: {
         providerConfigId: oauthState.providerConfigId,
-        email,
-        displayName: profile.data.name,
-        avatarUrl: profile.data.picture,
+        email: identity.email,
+        emailHash: identity.emailHash,
+        displayName: identity.displayName,
+        avatarUrl: identity.avatarUrl,
         accessTokenEncrypted: encryptText(tokens.access_token),
         refreshTokenEncrypted,
         tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
@@ -420,7 +438,7 @@ connectedAccountRouter.get('/google/callback', callbackRateLimiter, async (req, 
       action: isReconnect ? 'reconnect_drive' : 'connect_drive',
       entityType: 'connected_account',
       entityId: account.id,
-      metadata: { email: account.email }
+      metadata: { email }
     })
 
     return res.redirect(`${env.FRONTEND_URL}/google-connected?status=success`)
@@ -494,16 +512,17 @@ connectedAccountRouter.delete('/:id', requireAuth, async (req: AuthRequest, res,
     })
     const allDriveAccountsDisconnected = remainingActiveGoogleAccounts === 0
 
+    const decryptedAccount = decryptAccountPublic(account)
     await logAudit({
       userId: req.user!.id,
       action: 'disconnect_drive',
       entityType: 'connected_account',
       entityId: account.id,
-      metadata: { email: account.email }
+      metadata: { email: decryptedAccount.email }
     })
 
     return res.json({
-      disconnectedAccountEmail: account.email,
+      disconnectedAccountEmail: decryptedAccount.email,
       movedFilesCount: updateFilesResult.count,
       allDriveAccountsDisconnected,
       recoveryExpiresAt

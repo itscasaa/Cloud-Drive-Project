@@ -2,6 +2,9 @@ FROM node:20-alpine AS base
 
 WORKDIR /app
 
+# wget is used by docker-compose healthcheck
+RUN apk add --no-cache wget
+
 COPY package*.json ./
 COPY prisma ./prisma
 

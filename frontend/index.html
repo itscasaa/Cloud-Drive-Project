@@ -2,6 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function () {
+        try {
+          var key = 'casanest.theme'
+          var path = location.pathname || '/'
+          // Marketing / auth surfaces stay light — landing is light-only design.
+          var forceLight =
+            path === '/' ||
+            path === '/features' ||
+            path === '/about-security' ||
+            path === '/about-recovery' ||
+            path === '/pricing' ||
+            path === '/privacy' ||
+            path === '/terms' ||
+            path === '/data-deletion' ||
+            path === '/login' ||
+            path === '/register' ||
+            path === '/features/' ||
+            path === '/pricing/' ||
+            path === '/login/' ||
+            path === '/register/'
+          var stored = localStorage.getItem(key)
+          var dark =
+            !forceLight &&
+            (stored === 'dark' ||
+              (stored !== 'light' &&
+                window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches))
+          if (dark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.dataset.theme = 'dark'
+            document.documentElement.style.colorScheme = 'dark'
+          } else {
+            document.documentElement.classList.remove('dark')
+            if (forceLight) document.documentElement.classList.add('theme-force-light')
+            document.documentElement.dataset.theme = 'light'
+            document.documentElement.style.colorScheme = 'light'
+          }
+        } catch (e) {}
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="icon" href="/brand/logos.png" type="image/png" />

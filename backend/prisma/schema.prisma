@@ -3,14 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
   id             String             @id @default(uuid()) @db.Char(36)
-  name           String             @db.VarChar(191)
-  email          String             @unique @db.VarChar(191)
+  name           String             @db.Text
+  email          String             @db.Text
+  emailHash      String             @unique @map("email_hash") @db.VarChar(255)
   passwordHash   String             @map("password_hash") @db.VarChar(255)
   status         String             @default("active") @db.VarChar(32)
   role           String             @default("user") @db.VarChar(32)
@@ -69,16 +70,16 @@ model UploadRoutingPolicy {
 }
 
 model UserSession {
-  id               String    @id @default(uuid()) @db.Char(36)
-  userId           String    @map("user_id") @db.Char(36)
-  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(255)
-  userAgent        String?   @map("user_agent") @db.Text
-  ipAddress        String?   @map("ip_address") @db.VarChar(64)
-  expiresAt        DateTime  @map("expires_at")
-  revokedAt        DateTime? @map("revoked_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String    @id @default(uuid()) @db.Char(36)
+  userId               String    @map("user_id") @db.Char(36)
+  refreshTokenHash     String    @map("refresh_token_hash") @db.VarChar(255)
+  userAgent            String?   @map("user_agent") @db.Text
+  ipAddress            String?   @map("ip_address") @db.Text
+  expiresAt            DateTime  @map("expires_at")
+  revokedAt            DateTime? @map("revoked_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([refreshTokenHash])
@@ -140,8 +141,9 @@ model ConnectedAccount {
   providerConfigId      String?         @map("provider_config_id") @db.Char(36)
   provider              String          @db.VarChar(32)
   providerAccountId     String          @map("provider_account_id") @db.VarChar(191)
-  email                 String          @db.VarChar(191)
-  displayName           String?         @map("display_name") @db.VarChar(191)
+  email                 String          @db.Text
+  emailHash             String          @map("email_hash") @db.VarChar(255)
+  displayName           String?         @map("display_name") @db.Text
   avatarUrl             String?         @map("avatar_url") @db.Text
   accessTokenEncrypted  String?         @map("access_token_encrypted") @db.Text
   refreshTokenEncrypted String?         @map("refresh_token_encrypted") @db.Text
@@ -164,6 +166,7 @@ model ConnectedAccount {
   @@unique([provider, providerAccountId])
   @@index([userId])
   @@index([userId, status, createdAt])
+  @@index([emailHash])
   @@map("connected_accounts")
 }
 
@@ -237,17 +240,21 @@ model File {
 }
 
 model FileShare {
-  id        String    @id @default(uuid()) @db.Char(36)
-  fileId    String    @map("file_id") @db.Char(36)
-  userId    String    @map("user_id") @db.Char(36)
-  token     String?   @unique @db.VarChar(191)
-  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
-  enabled   Boolean   @default(true)
-  expiresAt DateTime? @map("expires_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  file      File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String    @id @default(uuid()) @db.Char(36)
+  fileId        String    @map("file_id") @db.Char(36)
+  userId        String    @map("user_id") @db.Char(36)
+  token         String?   @unique @db.VarChar(191)
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(255)
+  enabled       Boolean   @default(true)
+  expiresAt     DateTime? @map("expires_at")
+  allowDownload Boolean   @default(true) @map("allow_download")
+  passwordHash  String?   @map("password_hash") @db.VarChar(255)
+  viewCount     Int       @default(0) @map("view_count")
+  downloadCount Int       @default(0) @map("download_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  file          File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([fileId])
   @@index([userId])
